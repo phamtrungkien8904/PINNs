@@ -40,7 +40,7 @@ N = len(t)
 # ------------------------------------------------------------
 # Initial conditions
 # ------------------------------------------------------------
-theta1_0 = np.deg2rad(-9.0)
+theta1_0 = np.deg2rad(-20.0)
 theta2_0 = np.deg2rad(9.0)
 
 omega1_0 = 0.0
@@ -372,6 +372,7 @@ plt.legend()
 plt.grid()
 
 plt.tight_layout()
+plt.savefig("double_pendulum_ver2.png", dpi=600)
 plt.show()
 
 
@@ -432,46 +433,3 @@ plt.tight_layout()
 plt.show()
 
 
-# ============================================================
-# Energy conservation
-# ============================================================
-
-plt.figure(figsize=(8, 4))
-
-plt.plot(
-    t,
-    E - E[0]
-)
-
-plt.xlabel("Time [s]")
-plt.ylabel(r"$E(t)-E(0)$ [J]")
-
-plt.grid()
-plt.tight_layout()
-plt.show()
-
-
-# ============================================================
-# Print results
-# ============================================================
-
-print("FDM simulation finished.")
-print(f"Number of time points : {N}")
-print(f"dt                    : {dt}")
-print()
-print("Final values:")
-print(f"theta1 = {theta1[-1]:.8f} rad")
-print(f"theta2 = {theta2[-1]:.8f} rad")
-print(f"omega1 = {omega1[-1]:.8f} rad/s")
-print(f"omega2 = {omega2[-1]:.8f} rad/s")
-
-relative_energy_error = (
-    np.max(np.abs(E - E[0]))
-    / max(abs(E[0]), 1e-15)
-)
-
-print()
-print(
-    "Maximum relative energy error = "
-    f"{relative_energy_error:.3e}"
-)

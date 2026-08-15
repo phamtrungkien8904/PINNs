@@ -95,9 +95,9 @@ def deriv(y, t, L1, L2, m1, m2):
 
     return theta1dot, theta1dotdot, theta2dot, theta2dotdot
 
-tmax, dt = 20, 0.002
+tmax, dt = 10, 0.001
 t = np.arange(0, tmax + dt, dt)
-y0 = np.array([-np.pi/20, 0, np.pi/20, 0])
+y0 = np.array([-np.pi/9, 0, np.pi/20, 0])
 y = odeint(deriv, y0, t, args=(L1, L2, m1, m2))
 
 theta1, theta2 = y[:, 0], y[:, 2]
@@ -174,41 +174,41 @@ ax.set_xlim(0, tmax)
 ax.set_xlabel("Time (s)")
 ax.set_ylabel("Angle (rad)")
 ax.legend()
-plt.savefig("double_pendulum_angles.png", dpi=600)
+plt.savefig("double_pendulum_ver1.png", dpi=600)
 plt.show()
 
-bins = len(t)  # Number of bins for FFT, power of 2 for efficiency
-signal_fft1 = np.fft.fft(theta1, n=bins)
-signal_fft2 = np.fft.fft(theta2, n=bins)
-freq = np.fft.fftfreq(bins, d=(t[1] - t[0]))
-mask = freq > 0
-freq = freq[mask]
-mag1 = 2.0 / bins * np.abs(signal_fft1[mask])
-mag2 = 2.0 / bins * np.abs(signal_fft2[mask])
+# bins = len(t)  # Number of bins for FFT, power of 2 for efficiency
+# signal_fft1 = np.fft.fft(theta1, n=bins)
+# signal_fft2 = np.fft.fft(theta2, n=bins)
+# freq = np.fft.fftfreq(bins, d=(t[1] - t[0]))
+# mask = freq > 0
+# freq = freq[mask]
+# mag1 = 2.0 / bins * np.abs(signal_fft1[mask])
+# mag2 = 2.0 / bins * np.abs(signal_fft2[mask])
 
-fig, ax = plt.subplots(figsize=(6/2.54, 4/2.54))
-ax.plot(freq, mag1, label="Bob 1", color="blue", marker="o")
-ax.plot(freq, mag2, label="Bob 2", color="red", marker="s")
-ax.set_title("Frequency Spectrum")
-ax.set_xlabel("Frequency (Hz)")
-ax.set_ylabel("Magnitude")
-ax.set_xlim(0, 2)  # Limit x-axis to focus on low frequencies
-ax.legend()
-plt.savefig("double_pendulum_fft.png", dpi=600)
-plt.show()
+# fig, ax = plt.subplots(figsize=(6/2.54, 4/2.54))
+# ax.plot(freq, mag1, label="Bob 1", color="blue", marker="o")
+# ax.plot(freq, mag2, label="Bob 2", color="red", marker="s")
+# ax.set_title("Frequency Spectrum")
+# ax.set_xlabel("Frequency (Hz)")
+# ax.set_ylabel("Magnitude")
+# ax.set_xlim(0, 2)  # Limit x-axis to focus on low frequencies
+# ax.legend()
+# plt.savefig("double_pendulum_fft.png", dpi=600)
+# plt.show()
 
 
-signal_ifft1 = np.fft.ifft(signal_fft1)
-signal_ifft2 = np.fft.ifft(signal_fft2)
+# signal_ifft1 = np.fft.ifft(signal_fft1)
+# signal_ifft2 = np.fft.ifft(signal_fft2)
 
-fig, ax = plt.subplots(figsize=(6/2.54, 4/2.54))
-ax.plot(t, theta1, label="Original Bob 1", color="blue")
-ax.plot(t, signal_ifft1.real, label="Reconstructed Bob 1", color="cyan", linestyle="--")
-ax.plot(t, theta2, label="Original Bob 2", color="red")
-ax.plot(t, signal_ifft2.real, label="Reconstructed Bob 2", color="orange", linestyle="--")
-ax.set_title("Original and Reconstructed Signals")
-ax.set_xlabel("Time (s)")
-ax.set_ylabel("Angle (rad)")
-ax.legend()
-plt.savefig("double_pendulum_ifft.png", dpi=600)
-plt.show()
+# fig, ax = plt.subplots(figsize=(6/2.54, 4/2.54))
+# ax.plot(t, theta1, label="Original Bob 1", color="blue")
+# ax.plot(t, signal_ifft1.real, label="Reconstructed Bob 1", color="cyan", linestyle="--")
+# ax.plot(t, theta2, label="Original Bob 2", color="red")
+# ax.plot(t, signal_ifft2.real, label="Reconstructed Bob 2", color="orange", linestyle="--")
+# ax.set_title("Original and Reconstructed Signals")
+# ax.set_xlabel("Time (s)")
+# ax.set_ylabel("Angle (rad)")
+# ax.legend()
+# plt.savefig("double_pendulum_ifft.png", dpi=600)
+# plt.show()
