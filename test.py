@@ -1,9 +1,11 @@
+import os
+
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import time
-import msvcrt
+    
 
 # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # print(f"Using device: {device}")
@@ -82,17 +84,6 @@ plt.rcParams.update({
     'lines.markeredgewidth': 0.5,
 })
 
-
-# Enter key press detection for early stopping
-def enter_pressed():
-    if msvcrt is None:
-        return False
-    if not msvcrt.kbhit():
-        return False
-    while msvcrt.kbhit():
-        if msvcrt.getwch() in ('\r', '\n'):
-            return True
-    return False
 
 # Time formatting for runtime display
 def time_format(seconds):
@@ -197,12 +188,12 @@ ax_anim.legend()
 pinn_snapshots = []
 
 ### Optimization ###
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
-epochs = 100000
-lamb_data = 1e2
-lamb_physics = 1e1
-lamb_init = 5e0
+epochs = 10000
+lamb_data = 1e3
+lamb_physics = 1e2
+lamb_init = 5e1
 
 # History for plotting
 loss_history = []
@@ -245,9 +236,7 @@ for epoch in range(epochs+1):
     elapsed_time = time.time() - start_time
     if epoch % 100 == 0:
         print(f'\rEpoch {epoch}, Loss: {loss.item():.6f}, alpha: {model.alpha.item():.6f}, beta: {model.beta.item():.6f}, Time: {time_format(elapsed_time)}', end='', flush=True)
-    if enter_pressed():
-        print("\nManual stopped by user.")
-        break
+
 
     #### ANIMATION ######
     # Update animated PINN prediction every 100 epochs
