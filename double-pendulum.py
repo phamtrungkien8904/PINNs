@@ -107,8 +107,8 @@ x2 = x1 + L2 * np.sin(theta2)
 y2 = y1 - L2 * np.cos(theta2)
 
 
-################ ANIMATION SECTION ##############
-#################################################
+# ############### ANIMATION SECTION ##############
+# ################################################
 
 # # Animate and export at a true 30 fps so playback duration matches simulation time.
 # animation_fps = 30
