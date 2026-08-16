@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
 from scipy.optimize import root
 
 
@@ -18,7 +19,7 @@ from scipy.optimize import root
 # ============================================================
 
 # Number of pendulums
-n_pend = 5
+n_pend = 6
 
 # Mass of each bob
 m = np.ones(n_pend)
@@ -34,11 +35,12 @@ g = 9.81
 # ------------------------------------------------------------
 
 theta0 = np.deg2rad([
-    120.0,
+    10.0,
     -10.0,
     20.0,
     30.0,
-    -20.0
+    -20.0,
+    10.0,
 ])
 
 omega0 = np.zeros(n_pend)
@@ -51,7 +53,7 @@ omega0 = np.zeros(n_pend)
 t0 = 0.0
 t_end = 10.0
 
-dt = 0.001
+dt = 0.01
 
 t = np.arange(t0, t_end + dt, dt)
 
@@ -493,108 +495,86 @@ for n in range(Nt):
         * l
         * np.cos(theta[n])
     )
-
-
     energy[n] = T + V
 
 
 # ============================================================
-# PLOT ALL ANGLES
+# THETA VS TIME PLOT
 # ============================================================
 
-plt.figure(figsize=(10, 5))
+fig, axes = plt.subplots(2, 1, figsize=(10, 8), gridspec_kw={"height_ratios": [2, 3]})
 
 for i in range(n_pend):
-
-    plt.plot(
+    axes[0].plot(
         t,
         np.rad2deg(theta[:, i]),
         label=fr"$\theta_{i+1}$"
     )
 
-
-plt.xlabel("Time [s]")
-plt.ylabel("Angle [degree]")
-
-plt.legend()
-plt.grid()
-
-plt.tight_layout()
-plt.show()
-
+axes[0].set_xlabel("Time [s]")
+axes[0].set_ylabel("Angle [degree]")
+axes[0].legend()
+axes[0].grid(True)
+axes[0].set_title("Pendulum Angles vs Time")
 
 # ============================================================
-# PLOT TRAJECTORY OF EVERY BOB
+# SIMPLIFIED REAL-TIME ANIMATION
 # ============================================================
 
-plt.figure(figsize=(7, 7))
+# Use the already-computed positions of each pendulum bob.
+# Each pendulum i is drawn from the previous pivot location to the
+# current bob position, which gives the rod segment and bob motion.
+
+max_radius = np.sum(l) * 1.2
+
+ax = axes[1]
+ax.set_aspect("equal")
+ax.set_xlim(-max_radius, max_radius)
+ax.set_ylim(-max_radius, max_radius * 0.35)
+ax.set_xlabel("x")
+ax.set_ylabel("y")
+ax.grid(True)
+ax.set_title("N-Pendulum Motion")
+
+rod_lines = []
+bob_points = []
 
 for i in range(n_pend):
-
-    plt.plot(
-        x[:, i],
-        y[:, i],
-        label=f"Mass {i+1}"
-    )
+    (rod_line,) = ax.plot([], [], color=f"C{i}", lw=2)
+    (bob_point,) = ax.plot([], [], "o", color=f"C{i}", markersize=7)
+    rod_lines.append(rod_line)
+    bob_points.append(bob_point)
 
 
-plt.xlabel("x [m]")
-plt.ylabel("y [m]")
+def update(frame):
+    ax.set_title(f"N-Pendulum Motion  t = {t[frame]:.2f} s")
 
-plt.axis("equal")
-plt.grid()
-plt.legend()
+    for i in range(n_pend):
+        if i == 0:
+            prev_x, prev_y = 0.0, 0.0
+        else:
+            prev_x, prev_y = x[frame, i - 1], y[frame, i - 1]
 
+        curr_x, curr_y = x[frame, i], y[frame, i]
+
+        rod_lines[i].set_data([prev_x, curr_x], [prev_y, curr_y])
+        bob_points[i].set_data([curr_x], [curr_y])
+
+    return rod_lines + bob_points
+
+
+anim = FuncAnimation(
+    fig,
+    update,
+    frames=np.arange(0, Nt, 10),  # Skip frames for faster animation
+    interval=333,  # ~30 fps
+    blit=True,
+)
+
+# Save a real-time GIF using a higher frame rate so the motion is smoother
+# and more closely matches the physical time scale of the simulation.
+anim.save("n_pendulum_animation.gif", writer="pillow", fps=60)
 plt.tight_layout()
 plt.show()
 
 
-# ============================================================
-# ENERGY CONSERVATION
-# ============================================================
-
-plt.figure(figsize=(10, 4))
-
-plt.plot(
-    t,
-    energy - energy[0]
-)
-
-plt.xlabel("Time [s]")
-
-plt.ylabel(
-    r"$E(t)-E(0)$ [J]"
-)
-
-plt.grid()
-
-plt.tight_layout()
-plt.show()
-
-
-# ============================================================
-# PRINT
-# ============================================================
-
-print("\nSimulation completed.")
-
-print(
-    f"N pendulums      = {n_pend}"
-)
-
-print(
-    f"Timesteps        = {Nt}"
-)
-
-print(
-    f"dt               = {dt}"
-)
-
-print("\nFinal angles:")
-
-for i in range(n_pend):
-
-    print(
-        f"theta_{i+1} = "
-        f"{theta[-1, i]: .8f} rad"
-    )
