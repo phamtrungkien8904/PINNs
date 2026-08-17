@@ -136,7 +136,7 @@ t_max = t_num.max()
 start_time = time.time()
 
 class PINN(nn.Module):
-    def __init__(self, alpha_init=10.0, beta_init=0.2):
+    def __init__(self, alpha_init=0.0, beta_init=0.0):
         super().__init__()
 
         self.network = nn.Sequential(
@@ -158,8 +158,8 @@ class PINN(nn.Module):
         return self.network(t_scaled)
 
 
-alpha_init = 10.0
-beta_init = 0.5
+alpha_init = 0.0
+beta_init = 0.0
 
 model = PINN(alpha_init=alpha_init, beta_init=beta_init).to(device)
 
@@ -190,7 +190,7 @@ pinn_snapshots = []
 ### Optimization ###
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
-epochs = 10000
+epochs = 1000000
 lamb_data = 1e3
 lamb_physics = 1e2
 lamb_init = 5e1
