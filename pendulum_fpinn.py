@@ -43,7 +43,7 @@ DATA_FILE = "pendulum_data.dat"
 
 # Discrete training subset, equivalent to data[:600:10] in the original code.
 DATA_STOP_INDEX = 600
-DATA_STRIDE = 10
+DATA_STRIDE = 20
 
 # Fourier representation and collocation grid.
 N_MODES = 40
@@ -51,8 +51,8 @@ N_PHYSICS = 2048
 
 # Initial estimates. For theta(0)=0.999*pi, L=1 m and g=9.81 m/s^2,
 # the nonlinear period is approximately 10 s.
-ALPHA_INIT = 5.0
-PERIOD_INIT = 10.0
+ALPHA_INIT = 1e-1
+PERIOD_INIT = 1e-1
 LEARN_ALPHA = True
 LEARN_PERIOD = True
 
@@ -62,12 +62,12 @@ PERIOD_LOG_RANGE = 0.5
 
 # Optimizer settings. The Fourier model normally needs far fewer epochs than
 # the original 500000-epoch MLP.
-EPOCHS = 50_000
+EPOCHS = 100_000
 LEARNING_RATE = 1.0e-3
 WARMUP_EPOCHS = 2_000
 PHYSICS_RAMP_EPOCHS = 5_000
 PRINT_EVERY = 100
-SNAPSHOT_EVERY = 1_000
+SNAPSHOT_EVERY = 100
 
 # Normalized loss weights.
 LAMB_DATA = 10.0
@@ -229,7 +229,7 @@ plt.xlabel(r"Time (s)")
 plt.ylabel(r"Angle (rad)")
 plt.title(r"Pendulum training data")
 plt.legend()
-plt.savefig("fourier_pinn_training_data.png", dpi=600)
+# plt.savefig("fourier_pinn_training_data.png", dpi=600)
 plt.close(fig)
 
 
@@ -552,12 +552,8 @@ for epoch in range(EPOCHS + 1):
     if epoch % PRINT_EVERY == 0:
         elapsed_time = time.time() - start_time
         print(
-            f"\rEpoch {epoch:6d} | total={loss.item():.3e} "
-            f"data={data_loss.item():.3e} physics={physics_loss.item():.3e} "
-            f"IC={init_loss.item():.3e} ramp={ramp:.3f} "
-            f"alpha={model.alpha.item():.6f} T={model.period.item():.6f} "
-            f"time={time_format(elapsed_time)}",
-            end="",
+            f'\rEpoch {epoch:6d} | total={loss.item():.3e}, alpha={model.alpha.item():.6f} T={model.period.item():.6f}, Runtime={time_format(elapsed_time)}',
+            end='',
             flush=True,
         )
 
@@ -615,24 +611,12 @@ with torch.no_grad():
     theta_PINN = theta_PINN.cpu().numpy().flatten()
     omega_PINN = omega_PINN.cpu().numpy().flatten()
 
-np.savetxt(
-    "fourier_pinn_prediction.dat",
-    np.column_stack((t_PINN, theta_PINN, omega_PINN)),
-    header="t theta_fourier_pinn omega_fourier_pinn",
-)
+# np.savetxt(
+#     "fourier_pinn_prediction.dat",
+#     np.column_stack((t_PINN, theta_PINN, omega_PINN)),
+#     header="t theta_fourier_pinn omega_fourier_pinn",
+# )
 
-torch.save(
-    {
-        "model_state_dict": model.state_dict(),
-        "alpha": alpha_learned,
-        "period": period_learned,
-        "n_modes": N_MODES,
-        "theta_initial": theta_initial,
-        "omega_initial": omega_initial,
-        "time_initial": t_initial,
-    },
-    "fourier_pinn_model.pt",
-)
 
 if pinn_snapshots:
     # Add the final post-L-BFGS result as the last frame.
@@ -667,19 +651,29 @@ plt.plot(
     ls="None",
 )
 plt.plot(t_PINN, theta_PINN, label=r"Fourier-PINN Prediction", color="red")
-plt.axvline(
-    t_data_np.max(),
-    color="black",
-    linestyle="--",
-    linewidth=0.8,
-    alpha=0.6,
-    label=r"End of training data",
-)
 plt.xlabel(r"Time (s)")
 plt.ylabel(r"Angle (rad)")
 plt.title(r"Nonlinear Pendulum Fourier-PINN")
 plt.legend()
 plt.savefig("fourier_pinn_pendulum_results.png", dpi=600)
+plt.close(fig)
+
+# Convert the predicted angle from the time domain to the frequency domain.
+theta_PINN_frequency = np.fft.rfft(theta_PINN)
+frequency = np.fft.rfftfreq(
+    len(theta_PINN), d=float(t_PINN[1] - t_PINN[0])
+)
+theta_PINN_spectrum = np.abs(theta_PINN_frequency) / len(theta_PINN)
+if len(theta_PINN_spectrum) > 1:
+    theta_PINN_spectrum[1:-1] *= 2.0
+
+fig = plt.figure()
+plt.plot(frequency, theta_PINN_spectrum, color="red", marker="o", ls="-")
+plt.xlabel("Frequency (Hz)")
+plt.xlim(0, 2.0)
+plt.ylabel(r"$|\hat{\theta}(f)|$")
+plt.title("Fourier-PINN Prediction in the Frequency Domain")
+plt.savefig("fourier_pinn_prediction_spectrum.png", dpi=600)
 plt.close(fig)
 
 epochs_arr = np.arange(len(loss_history))
@@ -699,7 +693,7 @@ plt.xlabel("Epochs")
 plt.ylabel("Normalized loss")
 plt.title("Loss Convergence")
 plt.legend()
-plt.savefig("fourier_pinn_loss_convergence.png", dpi=600)
+plt.savefig("fourier_pinn_loss.png", dpi=600)
 plt.close(fig)
 
 fig, axes = plt.subplots(2, 1, figsize=(10 / 2.54, 9 / 2.54))
@@ -709,7 +703,7 @@ axes[0].set_xlabel("Epochs")
 axes[1].plot(epochs_arr, period_history, color="teal")
 axes[1].set_ylabel(r"Period $T$ (s)")
 axes[1].set_xlabel("Epochs")
-fig.savefig("fourier_pinn_parameters.png", dpi=600)
+# fig.savefig("fourier_pinn_parameters.png", dpi=600)
 plt.close(fig)
 
 # Final residual spectrum: which harmonics still violate the ODE?
@@ -732,7 +726,7 @@ plt.xlim(0, min(4 * N_MODES, len(residual_amplitude) - 1))
 plt.xlabel("Harmonic index")
 plt.ylabel(r"$|\hat{r}_k|$")
 plt.title("Final ODE Residual Spectrum")
-plt.savefig("fourier_pinn_residual_spectrum.png", dpi=600)
+# plt.savefig("fourier_pinn_residual_spectrum.png", dpi=600)
 plt.close(fig)
 
 print("Saved Fourier-PINN prediction, model, plots, and animation.")
