@@ -189,9 +189,9 @@ pinn_snapshots = []
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
 epochs = 500000
-lamb_data = 1e3
-lamb_physics = 1e4
-lamb_init = 5e1
+lamb_data = 1e2
+lamb_physics = 1e-1
+lamb_init = 1e3
 
 # History for plotting
 loss_history = []
