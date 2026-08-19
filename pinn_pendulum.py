@@ -7,15 +7,15 @@ import torch.nn as nn
 import time
     
 
-# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-# print(f"Using device: {device}")
-# if torch.cuda.is_available():
-#     print(f"GPU: {torch.cuda.get_device_name(0)}")
-# else:
-#     print(f"CPU: {torch.get_num_threads()} threads")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
+if torch.cuda.is_available():
+    print(f"GPU: {torch.cuda.get_device_name(0)}")
+else:
+    print(f"CPU: {torch.get_num_threads()} threads")
 
-device = torch.device("cpu")  # Force CPU usage for debugging
-print(f"Using device: {device} ({torch.get_num_threads()} threads)")
+# device = torch.device("cpu")  # Force CPU usage for debugging
+# print(f"Using device: {device} ({torch.get_num_threads()} threads)")
 
 # Custom settings
 plt.style.use('classic')
