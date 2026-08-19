@@ -105,9 +105,9 @@ omega_num = data[:, 2]
 # theta_data = theta_num[idx]
 # omega_data = omega_num[idx]
 
-t_data = data[:600:10, 0]
-theta_data = data[:600:10, 1]
-omega_data = data[:600:10, 2]
+t_data = data[:600:30, 0]
+theta_data = data[:600:30, 1]
+omega_data = data[:600:30, 2]
 
 
 plt.plot(t_data, theta_data, label=r'Training Data', color='blue', marker='o', ls = 'None')
@@ -117,6 +117,7 @@ plt.ylabel(r'Angle (rad)')
 plt.title(r'Pendulum PINN')
 plt.legend()
 plt.show()
+plt.close()
 
 # keep numpy copies for plotting/animation after we convert to tensors
 t_data_np = t_data.copy()
@@ -188,16 +189,18 @@ pinn_snapshots = []
 ### Optimization ###
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
-epochs = 500000
+epochs = 100000
 lamb_data = 1e2
-lamb_physics = 1e-1
+lamb_physics = 1e1
 lamb_init = 1e3
+lamb_energy = 1e-1
 
 # History for plotting
 loss_history = []
 data_loss_history = []
 physics_loss_history = []
 init_loss_history = []
+energy_loss_history = []
 
 for epoch in range(epochs+1):
     optimizer.zero_grad()
@@ -220,7 +223,12 @@ for epoch in range(epochs+1):
     residual_init = (theta_physics[0] - theta_data[0])**2 + (omega_physics[0] - omega_data[0])**2  # Initial condition residual
     init_loss = torch.mean(residual_init)
 
-    loss = lamb_data * data_loss + lamb_physics * physics_loss + lamb_init * init_loss
+    # Compute energy loss (optional, for regularization)
+    energy_physics = 0.5 * omega_physics**2 + model.alpha * (1 - torch.cos(theta_physics))
+    energy_initial = 0.5 * omega_data[0]**2 + model.alpha * (1 - torch.cos(theta_data[0]))
+    energy_loss = torch.mean((energy_physics - energy_initial)**2)
+
+    loss = lamb_data * data_loss + lamb_physics * physics_loss + lamb_init * init_loss + lamb_energy * energy_loss
     loss.backward()
     optimizer.step()
 
@@ -229,7 +237,7 @@ for epoch in range(epochs+1):
     data_loss_history.append(data_loss.item())
     physics_loss_history.append(physics_loss.item())
     init_loss_history.append(init_loss.item())
-
+    energy_loss_history.append(energy_loss.item())
     # Print progress
     elapsed_time = time.time() - start_time
     if epoch % 100 == 0:
@@ -291,6 +299,7 @@ plt.title(r'Pendulum PINN')
 plt.legend()
 plt.savefig("pinn_pendulum_results.png", dpi=600)
 plt.show()
+plt.close()
 
 
 # Plot loss histories
@@ -299,8 +308,10 @@ plt.semilogy(epochs_arr, loss_history, label='Total Loss', color='black')
 plt.semilogy(epochs_arr, data_loss_history, label='Data Loss', color='blue')
 plt.semilogy(epochs_arr, physics_loss_history, label='Physics Loss', color='red')
 plt.semilogy(epochs_arr, init_loss_history, label='Initial Condition Loss', color='green')
+plt.semilogy(epochs_arr, energy_loss_history, label='Energy Loss', color='purple')
 plt.xlabel('Epochs')
 plt.ylabel('Loss')
 plt.title('Loss Convergence')
 plt.legend()
 plt.show()
+plt.close()

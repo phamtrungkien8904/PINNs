@@ -42,8 +42,8 @@ import matplotlib.pyplot as plt
 DATA_FILE = "pendulum_data.dat"
 
 # Discrete training subset, equivalent to data[:600:10] in the original code.
-DATA_STOP_INDEX = 600
-DATA_STRIDE = 20
+DATA_STOP_INDEX = 400
+DATA_STRIDE = 10
 
 # Fourier representation and collocation grid.
 N_MODES = 40
@@ -51,8 +51,8 @@ N_PHYSICS = 2048
 
 # Initial estimates. For theta(0)=0.999*pi, L=1 m and g=9.81 m/s^2,
 # the nonlinear period is approximately 10 s.
-ALPHA_INIT = 1e-1
-PERIOD_INIT = 1e-1
+ALPHA_INIT = 10
+PERIOD_INIT = 10
 LEARN_ALPHA = True
 LEARN_PERIOD = True
 
@@ -63,7 +63,7 @@ PERIOD_LOG_RANGE = 0.5
 # Optimizer settings. The Fourier model normally needs far fewer epochs than
 # the original 500000-epoch MLP.
 EPOCHS = 100_000
-LEARNING_RATE = 1.0e-3
+LEARNING_RATE = 1.0e-4
 WARMUP_EPOCHS = 2_000
 PHYSICS_RAMP_EPOCHS = 5_000
 PRINT_EVERY = 100
