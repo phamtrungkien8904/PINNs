@@ -52,7 +52,7 @@ DATA_FILE = "pendulum_data.dat"
 
 # Same sparse-data selection as data[:600:10] in the original program.
 DATA_STOP_INDEX = 1200
-DATA_STRIDE = 100
+DATA_STRIDE = 40
 
 # Fourier feature layer.
 N_FOURIER_FEATURES = 20
@@ -66,7 +66,7 @@ N_PHYSICS = 2048
 
 # Learnable physical parameter alpha=g/L and oscillation period.
 ALPHA_INIT = 10.0
-PERIOD_INIT = 2.0
+PERIOD_INIT = 10.0
 LEARN_ALPHA = True
 LEARN_PERIOD = True
 
@@ -75,7 +75,7 @@ LEARN_PERIOD = True
 PERIOD_LOG_RANGE = 0.5
 
 # Training.
-EPOCHS = 10_000
+EPOCHS = 50_000
 LEARNING_RATE = 1.0e-4
 WARMUP_EPOCHS = 2_000
 PHYSICS_RAMP_EPOCHS = 5_000
@@ -638,14 +638,6 @@ plt.plot(
     ls="None",
 )
 plt.plot(t_PINN, theta_PINN, label=r"Fourier-PINN Prediction", color="red")
-plt.axvline(
-    t_data_np.max(),
-    color="black",
-    linestyle="--",
-    linewidth=0.8,
-    alpha=0.6,
-    label=r"End of training data",
-)
 plt.xlabel(r"Time (s)")
 plt.ylabel(r"Angle (rad)")
 plt.title(r"Nonlinear Pendulum Fourier-PINN")
