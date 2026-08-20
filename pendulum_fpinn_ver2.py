@@ -51,7 +51,7 @@ import matplotlib.pyplot as plt
 DATA_FILE = "pendulum_data.dat"
 
 # Same sparse-data selection as data[:600:10] in the original program.
-DATA_STOP_INDEX = 1200
+DATA_STOP_INDEX = 800
 DATA_STRIDE = 40
 
 # Fourier feature layer.
@@ -75,7 +75,7 @@ LEARN_PERIOD = True
 PERIOD_LOG_RANGE = 0.5
 
 # Training.
-EPOCHS = 50_000
+EPOCHS = 100_000
 LEARNING_RATE = 1.0e-4
 WARMUP_EPOCHS = 2_000
 PHYSICS_RAMP_EPOCHS = 5_000
