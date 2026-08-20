@@ -42,7 +42,7 @@ import matplotlib.pyplot as plt
 DATA_FILE = "pendulum_data.dat"
 
 # Discrete training subset, equivalent to data[:600:10] in the original code.
-DATA_STOP_INDEX = 400
+DATA_STOP_INDEX = 1300
 DATA_STRIDE = 10
 
 # Fourier representation and collocation grid.

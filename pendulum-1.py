@@ -8,7 +8,7 @@ l = 1
 beta = 0.0  # Damping coefficient
 theta0 = np.pi*0.999  # Initial angle
 
-N = 1001
+N = 5001
 t = np.linspace(0, 50, N)  # Time array
 theta = np.zeros(N)  # Angle array
 theta[0] = theta0  # Set initial angle
