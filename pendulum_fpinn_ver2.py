@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """True Fourier-feature PINN for a nonlinear pendulum.
 
 Architecture
@@ -52,8 +51,8 @@ import matplotlib.pyplot as plt
 DATA_FILE = "pendulum_data.dat"
 
 # Same sparse-data selection as data[:600:10] in the original program.
-DATA_STOP_INDEX = 600
-DATA_STRIDE = 10
+DATA_STOP_INDEX = 1200
+DATA_STRIDE = 100
 
 # Fourier feature layer.
 N_FOURIER_FEATURES = 20
@@ -66,7 +65,7 @@ HIDDEN_LAYERS = 3
 N_PHYSICS = 2048
 
 # Learnable physical parameter alpha=g/L and oscillation period.
-ALPHA_INIT = 5.0
+ALPHA_INIT = 10.0
 PERIOD_INIT = 10.0
 LEARN_ALPHA = True
 LEARN_PERIOD = True
@@ -77,11 +76,11 @@ PERIOD_LOG_RANGE = 0.5
 
 # Training.
 EPOCHS = 50_000
-LEARNING_RATE = 1.0e-3
+LEARNING_RATE = 1.0e-4
 WARMUP_EPOCHS = 2_000
 PHYSICS_RAMP_EPOCHS = 5_000
 PRINT_EVERY = 100
-SNAPSHOT_EVERY = 1_000
+SNAPSHOT_EVERY = 100
 
 # Three normalized loss weights.
 LAMB_DATA = 10.0
@@ -163,12 +162,17 @@ plt.rcParams.update(
         "ytick.minor.visible": True,
         "xtick.minor.size": 0,
         "ytick.minor.size": 0,
+        "xtick.minor.width": 0,
+        "ytick.minor.width": 0,
         "xtick.labelsize": 8,
         "ytick.labelsize": 8,
         "legend.frameon": False,
+        "legend.title_fontsize": 8,
         "legend.fontsize": 8,
         "legend.handlelength": 2,
         "legend.loc": "best",
+        "legend.numpoints": 1,
+        "lines.linestyle": "-",
         "lines.linewidth": 1,
         "lines.markersize": 4,
         "lines.markeredgecolor": "white",
@@ -505,12 +509,8 @@ for epoch in range(EPOCHS + 1):
     if epoch % PRINT_EVERY == 0:
         elapsed = time.time() - start_time
         print(
-            f"\rEpoch {epoch:6d} | total={loss.item():.3e} "
-            f"data={data_loss.item():.3e} physics={physics_loss.item():.3e} "
-            f"IC={initial_loss.item():.3e} ramp={multiplier:.3f} "
-            f"alpha={model.alpha.item():.6f} T={model.period.item():.6f} "
-            f"time={time_format(elapsed)}",
-            end="",
+            f'\rEpoch {epoch:6d} | Loss={loss.item():.3e}, alpha={model.alpha.item():.6f} T={model.period.item():.6f}, Runtime={time_format(elapsed)}',
+            end='',
             flush=True,
         )
 
@@ -578,26 +578,26 @@ omega_prediction_tensor = torch.autograd.grad(
 theta_PINN = theta_prediction_tensor.detach().cpu().numpy().flatten()
 omega_PINN = omega_prediction_tensor.detach().cpu().numpy().flatten()
 
-np.savetxt(
-    "true_fourier_pinn_prediction.dat",
-    np.column_stack((t_PINN, theta_PINN, omega_PINN)),
-    header="t theta_fourier_pinn omega_fourier_pinn",
-)
+# np.savetxt(
+#     "true_fourier_pinn_prediction.dat",
+#     np.column_stack((t_PINN, theta_PINN, omega_PINN)),
+#     header="t theta_fourier_pinn omega_fourier_pinn",
+# )
 
-torch.save(
-    {
-        "model_state_dict": model.state_dict(),
-        "alpha": model.alpha.item(),
-        "period": model.period.item(),
-        "n_fourier_features": N_FOURIER_FEATURES,
-        "hidden_nodes": HIDDEN_NODES,
-        "hidden_layers": HIDDEN_LAYERS,
-        "time_initial": t_initial,
-        "theta_initial": theta_initial,
-        "omega_initial": omega_initial,
-    },
-    "true_fourier_pinn_model.pt",
-)
+# torch.save(
+#     {
+#         "model_state_dict": model.state_dict(),
+#         "alpha": model.alpha.item(),
+#         "period": model.period.item(),
+#         "n_fourier_features": N_FOURIER_FEATURES,
+#         "hidden_nodes": HIDDEN_NODES,
+#         "hidden_layers": HIDDEN_LAYERS,
+#         "time_initial": t_initial,
+#         "theta_initial": theta_initial,
+#         "omega_initial": omega_initial,
+#     },
+#     "true_fourier_pinn_model.pt",
+# )
 
 
 # Training animation.
@@ -653,6 +653,24 @@ plt.legend()
 plt.savefig("true_fourier_pinn_results.png", dpi=600)
 plt.close(fig)
 
+# Convert the predicted angle from the time domain to the frequency domain.
+theta_PINN_frequency = np.fft.rfft(theta_PINN)
+frequency = np.fft.rfftfreq(
+    len(theta_PINN), d=float(t_PINN[1] - t_PINN[0])
+)
+theta_PINN_spectrum = np.abs(theta_PINN_frequency) / len(theta_PINN)
+if len(theta_PINN_spectrum) > 1:
+    theta_PINN_spectrum[1:-1] *= 2.0
+
+fig = plt.figure()
+plt.plot(frequency, theta_PINN_spectrum, color="red", marker="o", ls="-")
+plt.xlabel("Frequency (Hz)")
+plt.xlim(0, 2.0)
+plt.ylabel(r"$|\hat{\theta}(f)|$")
+plt.title("Fourier-PINN Prediction in the Frequency Domain")
+plt.savefig("true_fourier_pinn_spectrum.png", dpi=600)
+plt.close(fig)
+
 
 # Loss histories.
 epochs_array = np.arange(len(loss_history))
@@ -679,54 +697,17 @@ plt.savefig("true_fourier_pinn_losses.png", dpi=600)
 plt.close(fig)
 
 
-# Learned alpha and period.
-fig, axes = plt.subplots(2, 1, figsize=(10 / 2.54, 9 / 2.54))
-axes[0].plot(epochs_array, alpha_history, color="purple")
-axes[0].set_xlabel("Epochs")
-axes[0].set_ylabel(r"Learned $\alpha$")
-axes[1].plot(epochs_array, period_history, color="teal")
-axes[1].set_xlabel("Epochs")
-axes[1].set_ylabel(r"Period $T$ (s)")
-fig.savefig("true_fourier_pinn_parameters.png", dpi=600)
-plt.close(fig)
+# # Learned alpha and period.
+# fig, axes = plt.subplots(2, 1, figsize=(10 / 2.54, 9 / 2.54))
+# axes[0].plot(epochs_array, alpha_history, color="purple")
+# axes[0].set_xlabel("Epochs")
+# axes[0].set_ylabel(r"Learned $\alpha$")
+# axes[1].plot(epochs_array, period_history, color="teal")
+# axes[1].set_xlabel("Epochs")
+# axes[1].set_ylabel(r"Period $T$ (s)")
+# fig.savefig("true_fourier_pinn_parameters.png", dpi=600)
+# plt.close(fig)
 
 
-# Final Fourier spectrum of the ODE residual.
-phase_final = phase_physics_base.detach().clone().requires_grad_(True)
-theta_final_phase = model.forward_phase(phase_final)
-theta_final_phi = torch.autograd.grad(
-    theta_final_phase,
-    phase_final,
-    grad_outputs=torch.ones_like(theta_final_phase),
-    create_graph=True,
-)[0]
-theta_final_phi_phi = torch.autograd.grad(
-    theta_final_phi,
-    phase_final,
-    grad_outputs=torch.ones_like(theta_final_phi),
-    create_graph=False,
-)[0]
-theta_final_tt = model.fundamental_frequency.detach() ** 2 * theta_final_phi_phi
-residual_final = (
-    theta_final_tt + model.alpha.detach() * torch.sin(theta_final_phase.detach())
-) / PHYSICS_SCALE
-residual_spectrum = torch.fft.rfft(
-    residual_final.squeeze(-1), norm="ortho"
-)
-residual_amplitude = torch.abs(residual_spectrum).detach().cpu().numpy()
-
-fig = plt.figure()
-harmonic_indices = np.arange(len(residual_amplitude))
-plt.semilogy(
-    harmonic_indices,
-    np.maximum(residual_amplitude, np.finfo(float).tiny),
-    color="darkred",
-)
-plt.xlim(0, min(4 * N_FOURIER_FEATURES, len(residual_amplitude) - 1))
-plt.xlabel("Harmonic index")
-plt.ylabel(r"$|\hat{r}_k|$")
-plt.title("Final ODE Residual Spectrum")
-plt.savefig("true_fourier_pinn_residual_spectrum.png", dpi=600)
-plt.close(fig)
 
 print("Saved prediction, model, plots, residual spectrum, and animation.")

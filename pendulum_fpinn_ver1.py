@@ -706,27 +706,27 @@ axes[1].set_xlabel("Epochs")
 # fig.savefig("fourier_pinn_parameters.png", dpi=600)
 plt.close(fig)
 
-# Final residual spectrum: which harmonics still violate the ODE?
-with torch.no_grad():
-    theta_phase, _, acceleration_phase = model.fields_from_phase(phase_physics)
-    residual = (
-        acceleration_phase + model.alpha * torch.sin(theta_phase)
-    ) / PHYSICS_SCALE
-    residual_fft = torch.fft.rfft(residual.squeeze(-1), norm="ortho")
-    residual_amplitude = torch.abs(residual_fft).cpu().numpy()
+# # Final residual spectrum: which harmonics still violate the ODE?
+# with torch.no_grad():
+#     theta_phase, _, acceleration_phase = model.fields_from_phase(phase_physics)
+#     residual = (
+#         acceleration_phase + model.alpha * torch.sin(theta_phase)
+#     ) / PHYSICS_SCALE
+#     residual_fft = torch.fft.rfft(residual.squeeze(-1), norm="ortho")
+#     residual_amplitude = torch.abs(residual_fft).cpu().numpy()
 
-fig = plt.figure()
-harmonic_index = np.arange(len(residual_amplitude))
-plt.semilogy(
-    harmonic_index,
-    np.maximum(residual_amplitude, np.finfo(float).tiny),
-    color="darkred",
-)
-plt.xlim(0, min(4 * N_MODES, len(residual_amplitude) - 1))
-plt.xlabel("Harmonic index")
-plt.ylabel(r"$|\hat{r}_k|$")
-plt.title("Final ODE Residual Spectrum")
-# plt.savefig("fourier_pinn_residual_spectrum.png", dpi=600)
-plt.close(fig)
+# fig = plt.figure()
+# harmonic_index = np.arange(len(residual_amplitude))
+# plt.semilogy(
+#     harmonic_index,
+#     np.maximum(residual_amplitude, np.finfo(float).tiny),
+#     color="darkred",
+# )
+# plt.xlim(0, min(4 * N_MODES, len(residual_amplitude) - 1))
+# plt.xlabel("Harmonic index")
+# plt.ylabel(r"$|\hat{r}_k|$")
+# plt.title("Final ODE Residual Spectrum")
+# # plt.savefig("fourier_pinn_residual_spectrum.png", dpi=600)
+# plt.close(fig)
 
 print("Saved Fourier-PINN prediction, model, plots, and animation.")
