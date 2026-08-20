@@ -66,7 +66,7 @@ N_PHYSICS = 2048
 
 # Learnable physical parameter alpha=g/L and oscillation period.
 ALPHA_INIT = 10.0
-PERIOD_INIT = 10.0
+PERIOD_INIT = 2.0
 LEARN_ALPHA = True
 LEARN_PERIOD = True
 
@@ -75,7 +75,7 @@ LEARN_PERIOD = True
 PERIOD_LOG_RANGE = 0.5
 
 # Training.
-EPOCHS = 50_000
+EPOCHS = 10_000
 LEARNING_RATE = 1.0e-4
 WARMUP_EPOCHS = 2_000
 PHYSICS_RAMP_EPOCHS = 5_000
