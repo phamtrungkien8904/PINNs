@@ -16,8 +16,8 @@ import torch.nn.functional as F
 # Settings
 # ============================================================
 
-epochs = 20_000
-animation_every = 200
+epochs = 100_000
+animation_every = 1000
 n_modes = 64
 
 lambda_data = 1e2
@@ -404,16 +404,16 @@ spectrum_animation.save(
 plt.close(fig_spectrum)
 
 
-# Save numerical predictions and learned parameters
-np.savetxt(
-    "fourier_pinn_fixed_prediction.dat",
-    np.column_stack((t_num, theta_PINN, velocity_PINN)),
-    header="time theta_PINN velocity_PINN",
-)
+# # Save numerical predictions and learned parameters
+# np.savetxt(
+#     "fourier_pinn_fixed_prediction.dat",
+#     np.column_stack((t_num, theta_PINN, velocity_PINN)),
+#     header="time theta_PINN velocity_PINN",
+# )
 
-with open("fourier_pinn_fixed_parameters.txt", "w", encoding="utf-8") as file:
-    file.write(f"alpha = {alpha_learned:.12e}\n")
-    file.write(f"period = {period_learned:.12e}\n")
-    file.write(f"RMSE = {rmse:.12e}\n")
+# with open("fourier_pinn_fixed_parameters.txt", "w", encoding="utf-8") as file:
+#     file.write(f"alpha = {alpha_learned:.12e}\n")
+#     file.write(f"period = {period_learned:.12e}\n")
+#     file.write(f"RMSE = {rmse:.12e}\n")
 
 print("Finished.")
