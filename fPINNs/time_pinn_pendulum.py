@@ -105,19 +105,19 @@ omega_num = data[:, 2]
 # theta_data = theta_num[idx]
 # omega_data = omega_num[idx]
 
-t_data = data[:600:30, 0]
-theta_data = data[:600:30, 1]
-omega_data = data[:600:30, 2]
+t_data = data[:350:35, 0]
+theta_data = data[:350:35, 1]
+omega_data = data[:350:35, 2]
 
 
-plt.plot(t_data, theta_data, label=r'Training Data', color='blue', marker='o', ls = 'None')
-plt.plot(t_num, theta_num, label=r'Numerical Solution', color='orange', ls = '-')
-plt.xlabel(r'Time (s)')
-plt.ylabel(r'Angle (rad)')
-plt.title(r'Pendulum PINN')
-plt.legend()
-plt.show()
-plt.close()
+# plt.plot(t_data, theta_data, label=r'Training Data', color='blue', marker='o', ls = 'None')
+# plt.plot(t_num, theta_num, label=r'Numerical Solution', color='orange', ls = '-')
+# plt.xlabel(r'Time (s)')
+# plt.ylabel(r'Angle (rad)')
+# plt.title(r'Pendulum PINN')
+# plt.legend()
+# plt.show()
+# plt.close()
 
 # keep numpy copies for plotting/animation after we convert to tensors
 t_data_np = t_data.copy()
@@ -158,7 +158,7 @@ class PINN(nn.Module):
         return self.network(t_scaled)
 
 
-alpha_init = 0.0
+alpha_init = 10.0
 
 model = PINN(alpha_init=alpha_init).to(device)
 
@@ -189,11 +189,11 @@ pinn_snapshots = []
 ### Optimization ###
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
-epochs = 100000
+epochs = 50000
 lamb_data = 1e2
 lamb_physics = 1e1
-lamb_init = 1e3
-lamb_energy = 1e-1
+lamb_init = 1e0
+lamb_energy = 0.0
 
 # History for plotting
 loss_history = []
@@ -298,7 +298,7 @@ plt.ylabel(r'Angle (rad)')
 plt.title(r'Pendulum PINN')
 plt.legend()
 plt.savefig("pinn_pendulum_results.png", dpi=600)
-plt.show()
+# plt.show()
 plt.close()
 
 
@@ -313,5 +313,5 @@ plt.xlabel('Epochs')
 plt.ylabel('Loss')
 plt.title('Loss Convergence')
 plt.legend()
-plt.show()
+# plt.show()
 plt.close()

@@ -144,7 +144,7 @@ class FourierPINN(nn.Module):
         )
 
         # alpha = g/L
-        self.alpha = nn.Parameter(torch.tensor(9.0))
+        self.alpha = nn.Parameter(torch.tensor(10.0))
 
         # Begin with Theta(omega) = 0
         nn.init.zeros_(self.network[-1].weight)
@@ -167,7 +167,7 @@ epochs = 100_000
 
 lambda_data = 1e2
 lambda_physics = 1e1
-lambda_init = 1e3
+lambda_init = 5e0
 
 loss_history = []
 
@@ -281,7 +281,7 @@ time_animation = animation.FuncAnimation(
 )
 time_animation.save(
     "fourier_pinn_time_training.gif",
-    writer=animation.PillowWriter(fps=15),
+    writer=animation.PillowWriter(fps=30),
 )
 plt.close(fig_time)
 

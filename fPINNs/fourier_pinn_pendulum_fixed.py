@@ -16,16 +16,16 @@ import torch.nn.functional as F
 # Settings
 # ============================================================
 
-epochs = 100_000
-animation_every = 1000
+epochs = 500000
+animation_every = 10000
 n_modes = 64
 
 lambda_data = 1e2
 lambda_physics = 1e1
-lambda_init = 1e3
+lambda_init = 5e0
 
-alpha_init = 10.0  # g/L used to generate pendulum_data.dat
-learning_rate = 1e-3
+alpha_init = 8.0  # g/L used to generate pendulum_data.dat
+learning_rate = 1e-4
 
 torch.manual_seed(0)
 np.random.seed(0)
@@ -55,7 +55,7 @@ if not np.allclose(np.diff(t_num), dt):
     raise ValueError("The time samples must be uniformly spaced for FFT.")
 
 # Same 20 sparse training points as the original code
-idx = np.arange(0, 600, 30)
+idx = np.arange(0, 300, 10)
 t_data = t_num[idx]
 
 idx_tensor = torch.tensor(idx, dtype=torch.long, device=device)
@@ -231,13 +231,8 @@ for epoch in range(epochs + 1):
     if epoch % 100 == 0:
         elapsed = time.time() - start_time
         print(
-            f"\rEpoch {epoch:6d} | total={loss.item():.3e} "
-            f"| data={data_loss.item():.3e} "
-            f"| physics={physics_loss.item():.3e} "
-            f"| IC={init_loss.item():.3e} "
-            f"| alpha={model.alpha.item():.6f} "
-            f"| time={elapsed:.1f}s",
-            end="",
+            f'\rEpoch {epoch:6d} | total={loss.item():.3e} | alpha={model.alpha.item():.6f} | Runtime={elapsed:.1f}s',
+            end='',
             flush=True,
         )
 
@@ -293,13 +288,13 @@ plt.close(fig)
 
 # Fourier-domain result: show the correct FFT for comparison
 fig, ax = plt.subplots(figsize=(8, 4))
-ax.semilogy(
+ax.plot(
     omega_full_np[:n_modes],
     np.abs(Theta_true[:n_modes]) + 1e-12,
     label="FFT of numerical solution",
     color="orange",
 )
-ax.semilogy(
+ax.plot(
     omega_full_np[:n_modes],
     np.abs(Theta_PINN[:n_modes]) + 1e-12,
     label="Fourier PINN",
@@ -367,13 +362,13 @@ plt.close(fig_time)
 
 # Fourier-domain animation with the true FFT shown as reference
 fig_spectrum, ax_spectrum = plt.subplots(figsize=(8, 4))
-ax_spectrum.semilogy(
+ax_spectrum.plot(
     omega_full_np[:n_modes],
     np.abs(Theta_true[:n_modes]) + 1e-12,
     label="FFT of numerical solution",
     color="orange",
 )
-spectrum_line, = ax_spectrum.semilogy(
+spectrum_line, = ax_spectrum.plot(
     omega_full_np[:n_modes],
     spectrum_snapshots[0],
     label="Fourier PINN",
