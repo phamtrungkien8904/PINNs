@@ -251,6 +251,8 @@ with torch.no_grad():
 print("\nLearned alpha =", model.alpha.item())
 print(f'Runtime: {time_format(elapsed_time)}')
 
+print("Rendering plots and animations...")
+
 # Time-domain training animation
 fig_time, ax_time = plt.subplots()
 ax_time.plot(t_num, theta_num, label="Numerical solution", color="orange")
@@ -346,3 +348,5 @@ plt.xlabel("Epoch")
 plt.ylabel("Loss")
 plt.savefig("fourier_pinn_loss.png", dpi=300)
 plt.close()
+
+print("\rAll plots and animations rendered and saved.")
