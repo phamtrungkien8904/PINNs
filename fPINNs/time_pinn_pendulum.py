@@ -136,8 +136,10 @@ t_max = t_num.max()
 
 start_time = time.time()
 
+alpha_init = 10.0
+
 class PINN(nn.Module):
-    def __init__(self, alpha_init=0.0):
+    def __init__(self):
         super().__init__()
 
         self.network = nn.Sequential(
@@ -158,11 +160,10 @@ class PINN(nn.Module):
         return self.network(t_scaled)
 
 
-alpha_init = 10.0
 
-model = PINN(alpha_init=alpha_init).to(device)
+model = PINN().to(device)
 
-t_physics = torch.linspace(t_min, t_max, 1000, dtype=torch.float32, device=device).view(-1, 1)
+t_physics = torch.linspace(t_min, t_max, 1024*1, dtype=torch.float32, device=device).view(-1, 1)
 t_physics.requires_grad = True
 
 # Prepare PINN prediction grid and interactive plot for live updates
@@ -189,11 +190,11 @@ pinn_snapshots = []
 ### Optimization ###
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
-epochs = 50000
+epochs = 100000
 lamb_data = 1e2
-lamb_physics = 1e1
-lamb_init = 1e0
-lamb_energy = 0.0
+lamb_physics = 1e3
+lamb_init = 5e0
+lamb_energy = 1e0
 
 # History for plotting
 loss_history = []
@@ -240,7 +241,7 @@ for epoch in range(epochs+1):
     energy_loss_history.append(energy_loss.item())
     # Print progress
     elapsed_time = time.time() - start_time
-    if epoch % 100 == 0:
+    if epoch % 1000 == 0:
         print(f'\rEpoch {epoch}, Loss: {loss.item():.6f}, alpha: {model.alpha.item():.6f}, Time: {time_format(elapsed_time)}', end='', flush=True)
 
 
