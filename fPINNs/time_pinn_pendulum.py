@@ -105,9 +105,9 @@ omega_num = data[:, 2]
 # theta_data = theta_num[idx]
 # omega_data = omega_num[idx]
 
-t_data = data[:350:35, 0]
-theta_data = data[:350:35, 1]
-omega_data = data[:350:35, 2]
+t_data = data[:600:10, 0]
+theta_data = data[:600:10, 1]
+omega_data = data[:600:10, 2]
 
 
 # plt.plot(t_data, theta_data, label=r'Training Data', color='blue', marker='o', ls = 'None')
@@ -143,13 +143,13 @@ class PINN(nn.Module):
         super().__init__()
 
         self.network = nn.Sequential(
-            nn.Linear(1,32),
+            nn.Linear(1,64),
             nn.Tanh(),
-            nn.Linear(32,32),
+            nn.Linear(64,64),
             nn.Tanh(),
-            nn.Linear(32,32),
+            nn.Linear(64,64),
             nn.Tanh(),
-            nn.Linear(32,1)
+            nn.Linear(64,1)
         )
 
         # Learnable physical parameters (scalars)
@@ -163,11 +163,11 @@ class PINN(nn.Module):
 
 model = PINN().to(device)
 
-t_physics = torch.linspace(t_min, t_max, 1024*1, dtype=torch.float32, device=device).view(-1, 1)
+t_physics = torch.linspace(t_min, t_max, 2000, dtype=torch.float32, device=device).view(-1, 1)
 t_physics.requires_grad = True
 
 # Prepare PINN prediction grid and interactive plot for live updates
-t_PINN = np.linspace(t_min.item(), t_max.item(), 1000)
+t_PINN = np.linspace(t_min.item(), t_max.item(), 2000)
 t_PINN_tensor = torch.tensor(t_PINN, dtype=torch.float32, device=device).view(-1, 1)
 
 
@@ -190,11 +190,11 @@ pinn_snapshots = []
 ### Optimization ###
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
-epochs = 100000
+epochs = 200000
 lamb_data = 1e2
-lamb_physics = 1e3
-lamb_init = 5e0
-lamb_energy = 1e0
+lamb_physics = 1e1
+lamb_init = 1e0
+lamb_energy = 1e-1
 
 # History for plotting
 loss_history = []
@@ -266,7 +266,7 @@ print(f'\nLearned alpha: {alpha_learned:.6f}')
 print(f'Runtime: {time_format(elapsed_time)}')
 
 # PINN Prediction
-t_PINN = np.linspace(t_min.item(), t_max.item(), 1000)
+t_PINN = np.linspace(t_min.item(), t_max.item(), 2000)
 t_PINN_tensor = torch.tensor(t_PINN, dtype=torch.float32, device=device).view(-1, 1)
 model.eval()
 with torch.no_grad():

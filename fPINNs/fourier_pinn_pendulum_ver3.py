@@ -26,7 +26,7 @@ alpha_relaxation = 0.02
 
 lambda_data = 1e2
 lambda_physics = 1e1
-lambda_init = 1e3
+lambda_init = 1e0
 
 torch.manual_seed(0)
 np.random.seed(0)
@@ -304,14 +304,15 @@ for epoch in range(epochs + 1):
         (theta_prediction[idx_tensor] - theta_data) ** 2
     )
 
-    # 2. Nonlinear pendulum physics.  theta'' is still calculated by
-    # Fourier differentiation, but sin(theta) must be evaluated in time.
-    # Keeping sin(theta) is necessary to identify the generating alpha=10.
-    physics_residual = (
-        acceleration_prediction
-        + model.alpha * torch.sin(theta_prediction)
+    # 2. Linear Fourier physics residual:
+    #    (alpha - omega^2) * Theta(omega) = 0.
+    physics_residual_fourier = (
+        model.alpha - omega_full**2
+    ) * Theta
+    # Enforce only on the active low-frequency band represented by the model.
+    physics_loss = torch.mean(
+        torch.abs(physics_residual_fourier[:n_modes]) ** 2
     )
-    physics_loss = torch.mean(physics_residual**2)
 
     # 3. Initial conditions after inverse FFT
     init_loss = (

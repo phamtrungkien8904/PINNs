@@ -192,7 +192,7 @@ optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 epochs = 100000
 lamb_data = 1e2
 lamb_physics = 1e1
-lamb_init = 1e3
+lamb_init = 1e0
 lamb_energy = 1e-1
 
 # History for plotting
