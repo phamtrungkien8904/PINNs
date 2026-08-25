@@ -17,10 +17,10 @@ import torch.nn.functional as F
 n_modes = 128
 hidden_nodes = 128
 pretrain_epochs = 2_000
-epochs = 30_000
-animation_every = 1000
+epochs = 10000
+animation_every = 100
 
-alpha_init = 8.0
+alpha_init = 5.0
 learning_rate = 1e-4
 alpha_relaxation = 0.02
 
@@ -54,7 +54,7 @@ if not np.allclose(np.diff(t_num), dt):
     raise ValueError("Time samples must be uniformly spaced.")
 
 # Same sparse measurements as the original code.
-idx = np.arange(0, min(600, N), 30)
+idx = np.arange(0, min(100, N), 10)
 t_data = t_num[idx]
 
 idx_tensor = torch.tensor(idx, dtype=torch.long, device=device)
@@ -424,7 +424,6 @@ plt.close(fig)
 # Learned-alpha PNG
 fig, ax = plt.subplots(figsize=(8, 4))
 ax.plot(alpha_history, color="purple", label="Identified alpha")
-ax.axhline(10.0, color="black", ls="--", label="Reference alpha = 10")
 ax.set_xlabel("Epoch")
 ax.set_ylabel("alpha (s^-2)")
 ax.legend()
@@ -505,15 +504,3 @@ spectrum_animation.save(
 )
 plt.close(fig_spectrum)
 
-
-# np.savetxt(
-#     "fourier_tanh_pinn_prediction.dat",
-#     np.column_stack((t_num, theta_PINN, velocity_PINN)),
-#     header="time theta_PINN velocity_PINN",
-# )
-
-# np.savetxt(
-#     "fourier_tanh_pinn_summary.dat",
-#     np.array([[alpha_learned, period_learned, rmse]]),
-#     header="alpha period_seconds theta_rmse",
-# )
