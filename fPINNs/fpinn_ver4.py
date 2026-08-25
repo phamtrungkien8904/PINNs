@@ -1,5 +1,5 @@
 import math
-
+import time
 import numpy as np
 import matplotlib
 
@@ -11,6 +11,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+# Time formatting for runtime display
+def time_format(seconds):
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    seconds = int(seconds % 60)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
 
 # ============================================================
 # Settings
@@ -21,12 +28,13 @@ hidden_nodes = 128
 pretrain_epochs = 2_000
 epochs = 10000
 animation_every = 100
+print_every = 100
 
 # k = 0, ..., sine_taylor_order.  The default keeps
 # theta, theta^3, theta^5, and theta^7.
 sine_taylor_order = 3
 
-alpha_init = 5.0
+alpha_init = 10.0
 learning_rate = 1e-4
 alpha_relaxation = 0.02
 
@@ -38,6 +46,8 @@ torch.manual_seed(0)
 np.random.seed(0)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device})")
+
 
 
 # ============================================================
@@ -62,7 +72,7 @@ if not np.allclose(np.diff(t_num), dt):
     raise ValueError("Time samples must be uniformly spaced.")
 
 # Same sparse measurements as the original code.
-idx = np.arange(0, min(100, N), 10)
+idx = np.arange(0, min(1200, N), 24)
 t_data = t_num[idx]
 
 idx_tensor = torch.tensor(idx, dtype=torch.long, device=device)
@@ -391,6 +401,7 @@ theta_snapshots = []
 spectrum_snapshots = []
 snapshot_epochs = []
 
+start_time = time.time()
 for epoch in range(epochs + 1):
     optimizer.zero_grad(set_to_none=True)
 
@@ -449,6 +460,9 @@ for epoch in range(epochs + 1):
     alpha_history.append(model.alpha.item())
 
     # Store arrays only; render all figures after training.
+    elapsed_time = time.time() - start_time
+    if epoch % print_every == 0:
+        print(f'\rEpoch {epoch:6d} | Loss {loss.item():.3e} | Alpha {model.alpha.item():.3e} | Time {time_format(elapsed_time)}', end='', flush=True)
     if epoch % animation_every == 0:
         theta_snapshots.append(
             theta_prediction.detach().cpu().numpy().copy()
@@ -481,6 +495,10 @@ alpha_learned = model.alpha.item()
 period_learned = 2 * np.pi / np.sqrt(alpha_learned)
 rmse = np.sqrt(np.mean((theta_PINN - theta_num) ** 2))
 
+print(f"\nLearned alpha: {alpha_learned:.6f} s^-2")
+print(f"Runtime: {time_format(time.time() - start_time)}")
+print("Saving results...")
+
 # Time-domain PNG
 fig, ax = plt.subplots(figsize=(8, 4))
 ax.plot(t_num, theta_num, label="Numerical solution", color="orange")
@@ -490,7 +508,7 @@ ax.set_xlabel("Time (s)")
 ax.set_ylabel("Angle (rad)")
 ax.legend()
 fig.tight_layout()
-fig.savefig("fourier_tanh_pinn_result.png", dpi=300)
+fig.savefig("fpinn_result_ver4.png", dpi=300)
 plt.close(fig)
 
 
@@ -513,7 +531,7 @@ ax.set_xlabel("Angular frequency omega (rad/s)")
 ax.set_ylabel("|Theta(omega)|")
 ax.legend()
 fig.tight_layout()
-fig.savefig("fourier_tanh_pinn_spectrum.png", dpi=300)
+fig.savefig("fpinn_spectrum_ver4.png", dpi=300)
 plt.close(fig)
 
 
@@ -527,7 +545,7 @@ ax.set_xlabel("Epoch")
 ax.set_ylabel("Loss")
 ax.legend()
 fig.tight_layout()
-fig.savefig("fourier_tanh_pinn_losses.png", dpi=300)
+fig.savefig("fpinn_loss_ver4.png", dpi=300)
 plt.close(fig)
 
 
@@ -538,7 +556,7 @@ ax.set_xlabel("Epoch")
 ax.set_ylabel("alpha (s^-2)")
 ax.legend()
 fig.tight_layout()
-fig.savefig("fourier_tanh_pinn_alpha.png", dpi=300)
+fig.savefig("fpinn_alpha_ver4.png", dpi=300)
 plt.close(fig)
 
 
@@ -570,7 +588,7 @@ time_animation = animation.FuncAnimation(
     blit=False,
 )
 time_animation.save(
-    "fourier_tanh_pinn_time.gif",
+    "fpinn_time_ver4.gif",
     writer=animation.PillowWriter(fps=15),
 )
 plt.close(fig_time)
@@ -609,8 +627,9 @@ spectrum_animation = animation.FuncAnimation(
     blit=False,
 )
 spectrum_animation.save(
-    "fourier_tanh_pinn_spectrum.gif",
+    "fpinn_spectrum_ver4.gif",
     writer=animation.PillowWriter(fps=15),
 )
 plt.close(fig_spectrum)
 
+print('All results saved.')

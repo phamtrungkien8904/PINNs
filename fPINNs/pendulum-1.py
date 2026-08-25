@@ -6,10 +6,10 @@ import matplotlib.animation as animation
 g = 10
 l = 1
 beta = 0.0  # Damping coefficient
-theta0 = np.pi*0.05  # Initial angle
+theta0 = np.pi*0.9  # Initial angle
 
-N = 2000
-t = np.linspace(0, 20, N)  # Time array
+N = 5000
+t = np.linspace(0, 50, N)  # Time array
 theta = np.zeros(N)  # Angle array
 theta[0] = theta0  # Set initial angle
 omega = np.zeros(N)  # Angular velocity array
