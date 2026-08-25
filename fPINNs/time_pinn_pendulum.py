@@ -1,5 +1,5 @@
 import os
-
+import matplotlib.animation as animation
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
@@ -14,8 +14,6 @@ if torch.cuda.is_available():
 else:
     print(f"CPU: {torch.get_num_threads()} threads")
 
-# device = torch.device("cpu")  # Force CPU usage for debugging
-# print(f"Using device: {device} ({torch.get_num_threads()} threads)")
 
 # Custom settings
 plt.style.use('classic')
@@ -97,27 +95,10 @@ t_num = data[:, 0]
 theta_num = data[:, 1]
 omega_num = data[:, 2]
 
-# idx = np.array([0])
-# idx = np.append(idx, np.random.choice(len(t_num), size=99, replace=False))
-# idx = idx.flatten()
 
-# t_data = t_num[idx]
-# theta_data = theta_num[idx]
-# omega_data = omega_num[idx]
-
-t_data = data[:600:10, 0]
-theta_data = data[:600:10, 1]
-omega_data = data[:600:10, 2]
-
-
-# plt.plot(t_data, theta_data, label=r'Training Data', color='blue', marker='o', ls = 'None')
-# plt.plot(t_num, theta_num, label=r'Numerical Solution', color='orange', ls = '-')
-# plt.xlabel(r'Time (s)')
-# plt.ylabel(r'Angle (rad)')
-# plt.title(r'Pendulum PINN')
-# plt.legend()
-# plt.show()
-# plt.close()
+t_data = data[:350:35, 0]
+theta_data = data[:350:35, 1]
+omega_data = data[:350:35, 2]
 
 # keep numpy copies for plotting/animation after we convert to tensors
 t_data_np = t_data.copy()
@@ -134,7 +115,6 @@ t_max = t_num.max()
 #### PINN ####
 ##############
 
-start_time = time.time()
 
 alpha_init = 10.0
 
@@ -171,7 +151,7 @@ t_PINN = np.linspace(t_min.item(), t_max.item(), 2000)
 t_PINN_tensor = torch.tensor(t_PINN, dtype=torch.float32, device=device).view(-1, 1)
 
 
-######### ANIMATION SECTION #############
+######### ANIMATION SECTION 1 #############
 #########################################
 # plt.ion()
 fig_anim, ax_anim = plt.subplots()
@@ -184,17 +164,17 @@ ax_anim.set_title(r'Pendulum PINN')
 ax_anim.legend()
 # fig_anim.show()
 
+### Optimization ###
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+
+epochs = 50000
+lamb_data = 1e-1
+lamb_physics = 1e-2
+lamb_init = 1e-3
+lamb_energy = 1e-4
+
 # collect PINN snapshots (one per update) for GIF saving
 pinn_snapshots = []
-
-### Optimization ###
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
-
-epochs = 200000
-lamb_data = 1e2
-lamb_physics = 1e1
-lamb_init = 1e0
-lamb_energy = 1e-1
 
 # History for plotting
 loss_history = []
@@ -202,6 +182,8 @@ data_loss_history = []
 physics_loss_history = []
 init_loss_history = []
 energy_loss_history = []
+
+start_time = time.time() # Start timer for runtime display
 
 for epoch in range(epochs+1):
     optimizer.zero_grad()
@@ -276,7 +258,6 @@ with torch.no_grad():
 ############### SAVE ANIMATION ######################
 # Save collected snapshots as a GIF: 30 fps, each frame = 100 epochs
 if len(pinn_snapshots) > 0:
-    import matplotlib.animation as animation
     # plt.ioff()
     def update_frame(i):
         pinn_line.set_ydata(pinn_snapshots[i])
