@@ -212,7 +212,9 @@ for epoch in range(epochs+1):
     energy_loss = torch.mean((energy_physics - energy_initial)**2)
 
     loss = lamb_data * data_loss + lamb_physics * physics_loss + lamb_init * init_loss + lamb_energy * energy_loss
+
     loss.backward()
+    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
     optimizer.step()
 
     # record
