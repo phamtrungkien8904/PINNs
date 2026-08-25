@@ -380,7 +380,7 @@ ax.set_xlabel("Time (s)")
 ax.set_ylabel("Angle (rad)")
 ax.legend()
 fig.tight_layout()
-fig.savefig("fourier_tanh_pinn_result.png", dpi=300)
+fig.savefig("fpinn_result_ver3.png", dpi=300)
 plt.close(fig)
 
 
@@ -403,7 +403,7 @@ ax.set_xlabel("Angular frequency omega (rad/s)")
 ax.set_ylabel("|Theta(omega)|")
 ax.legend()
 fig.tight_layout()
-fig.savefig("fourier_tanh_pinn_spectrum.png", dpi=300)
+fig.savefig("fpinn_spectrum_ver3.png", dpi=300)
 plt.close(fig)
 
 
@@ -417,7 +417,7 @@ ax.set_xlabel("Epoch")
 ax.set_ylabel("Loss")
 ax.legend()
 fig.tight_layout()
-fig.savefig("fourier_tanh_pinn_losses.png", dpi=300)
+fig.savefig("fpinn_loss_ver3.png", dpi=300)
 plt.close(fig)
 
 
@@ -428,7 +428,7 @@ ax.set_xlabel("Epoch")
 ax.set_ylabel("alpha (s^-2)")
 ax.legend()
 fig.tight_layout()
-fig.savefig("fourier_tanh_pinn_alpha.png", dpi=300)
+fig.savefig("fpinn_alpha_ver3.png", dpi=300)
 plt.close(fig)
 
 
@@ -460,7 +460,7 @@ time_animation = animation.FuncAnimation(
     blit=False,
 )
 time_animation.save(
-    "fourier_tanh_pinn_time.gif",
+    "fpinn_time_ver3.gif",
     writer=animation.PillowWriter(fps=15),
 )
 plt.close(fig_time)
@@ -499,7 +499,7 @@ spectrum_animation = animation.FuncAnimation(
     blit=False,
 )
 spectrum_animation.save(
-    "fourier_tanh_pinn_spectrum.gif",
+    "fpinn_spectrum_ver3.gif",
     writer=animation.PillowWriter(fps=15),
 )
 plt.close(fig_spectrum)
