@@ -236,6 +236,13 @@ def current_physics_weight(epoch):
     return LAMBDA_PHYSICS * ramp
 
 
+def coefficient_of_determination(reference, prediction):
+    """Return R^2 for a prediction against a reference trajectory."""
+    total_sum_of_squares = np.sum((reference - np.mean(reference)) ** 2)
+    residual_sum_of_squares = np.sum((reference - prediction) ** 2)
+    return 1.0 - residual_sum_of_squares / total_sum_of_squares
+
+
 def save_time_animation(t, theta_reference, data_indices, snapshots, epochs):
     fig, ax = plt.subplots()
     ax.plot(t, theta_reference, color="orange", label="Numerical Solution")
@@ -384,7 +391,7 @@ def main():
     spectrum_plot_mask = frequencies <= SPECTRUM_XMAX
 
     # Preserve the sparse measurement selection used in ver6.
-    data_indices = np.arange(0, 1000, 20)
+    data_indices = np.arange(0, 1200, 60)
     initial_mode, initial_real, initial_imaginary = estimate_initial_mode(
         t[data_indices], theta_reference[data_indices], frequencies[:active_modes]
     )
@@ -492,8 +499,12 @@ def main():
     spectrum_final = np.abs(spectrum_final.cpu().numpy())
     theta_final = theta_final.cpu().numpy()
     spectrum_reference = np.abs(np.fft.rfft(theta_reference) / n_time)
+    coefficient_determination = coefficient_of_determination(
+        theta_reference, theta_final
+    )
 
     print(f"\nLearned alpha: {model.alpha.item():.6f}")
+    print(f"Coefficient of determination (R^2): {coefficient_determination:.6f}")
     print(f"Runtime: {format_time(time.time() - start_time)}")
     print("Saving figures and animations...")
 
