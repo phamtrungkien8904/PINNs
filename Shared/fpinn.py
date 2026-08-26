@@ -10,7 +10,7 @@ import torch.nn as nn
 
 plt.style.use("classic")
 plt.rcParams.update({
-    "text.usetex": True,
+    "text.usetex": False,
     'text.latex.preamble': r'''
     \usepackage[T1]{fontenc}
     \usepackage{lmodern}
