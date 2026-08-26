@@ -59,7 +59,7 @@ physics_modes = min(128, len(omegafreq_np))
 omegafreq_active = omegafreq[:physics_modes]
 omegafreq_input = omegafreq_active.view(-1, 1)
 
-alpha_init = 0.0
+alpha_init = 10.0
 
 
 def estimate_initial_mode():
@@ -106,8 +106,6 @@ class FourierPINN(nn.Module):
             torch.tensor(float(alpha_init), dtype=torch.float32)
         )
 
-        self.initialize_physical_peak()
-
     def forward(self, omega):
         omega_scaled = 2 * omega / omegafreq_active[-1] - 1
         output = self.network(omega_scaled)
@@ -121,32 +119,6 @@ class FourierPINN(nn.Module):
             imaginary_mask[-1] = 0.0
 
         return torch.complex(output[:, 0], output[:, 1] * imaginary_mask)
-
-    def initialize_physical_peak(self):
-        first_layer = self.network[0]
-        output_layer = self.network[-1]
-
-        nn.init.xavier_uniform_(first_layer.weight)
-        nn.init.zeros_(first_layer.bias)
-        nn.init.zeros_(output_layer.weight)
-        nn.init.zeros_(output_layer.bias)
-
-        x_grid = 2 * omegafreq_active / omegafreq_active[-1] - 1
-        x0 = x_grid[initial_mode].item()
-        dx = (x_grid[1] - x_grid[0]).item()
-        steepness = 8.0 / dx
-        left = x0 - dx / 2
-        right = x0 + dx / 2
-
-        with torch.no_grad():
-            first_layer.weight[0, 0] = steepness
-            first_layer.bias[0] = -steepness * left
-            first_layer.weight[1, 0] = steepness
-            first_layer.bias[1] = -steepness * right
-            output_layer.weight[0, 0] = initial_real / 2
-            output_layer.weight[0, 1] = -initial_real / 2
-            output_layer.weight[1, 0] = initial_imaginary / 2
-            output_layer.weight[1, 1] = -initial_imaginary / 2
 
 
 model = FourierPINN().to(device)
@@ -190,12 +162,12 @@ ax_anim.legend()
 
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
-epochs = 10000
-animate_every = 100
-print_every = 100
-lamb_data = 1e-1
-lamb_physics = 1e-2
-lamb_init = 1e-3
+epochs = 100000
+animate_every = 1000
+print_every = 1000
+lamb_data = 1e0
+lamb_physics = 1e-1
+lamb_init = 1e-2
 lamb_energy = 1e-10
 
 pinn_snapshots = []
@@ -209,19 +181,19 @@ start_time = time.time()
 for epoch in range(epochs + 1):
     optimizer.zero_grad()
 
-    Theta, theta_prediction, velocity_prediction, _ = predict_from_fourier()
+    Theta, theta_prediction, velocity_prediction, acceleration_prediction = predict_from_fourier()
 
     # Data loss is computed from the inverse Fourier reconstruction.
     data_loss = torch.mean(
         (theta_prediction[idx_tensor] - theta_data) ** 2
     )
 
-    # Fourier physics residual: (alpha - omega^2) Theta(omega).
+    # Physics residual.
+    
     residual_physics = (
-        model.alpha - omegafreq_active**2
-    ) * Theta[:physics_modes]
-    residual_scale = model.alpha + omegafreq_active[-1] ** 2
-    residual_physics = residual_physics / residual_scale
+        acceleration_prediction
+        + model.alpha * torch.sin(theta_prediction)
+    )
     physics_loss = torch.mean(torch.abs(residual_physics) ** 2)
 
     # Initial conditions are also computed from the inverse Fourier reconstruction.
@@ -331,7 +303,7 @@ plt.plot(
 plt.xlabel("Angular frequency (rad/s)")
 plt.ylabel(r"$|\Theta(\omega)|$")
 plt.xlim(0, 10)
-plt.ylim(0, 0.5)
+plt.ylim(0, 1)
 plt.legend()
 plt.savefig("fpinn_spectrum_ver6.png", dpi=600)
 plt.close()
