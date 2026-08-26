@@ -52,8 +52,6 @@ np.random.seed(SEED)
 
 
 def format_time(seconds):
-    """Convert elapsed seconds to HH:MM:SS."""
-
     hours, remainder = divmod(int(seconds), 3600)
     minutes, seconds = divmod(remainder, 60)
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
@@ -61,19 +59,9 @@ def format_time(seconds):
 
 def load_data(path):
     """Load and validate a uniformly sampled pendulum trajectory."""
-
     data = np.loadtxt(path, skiprows=1)
-    if data.ndim != 2 or data.shape[1] < 3:
-        raise ValueError("Data must contain time, angle, and velocity columns.")
-
     t, theta, velocity = data[:, 0], data[:, 1], data[:, 2]
-    if len(t) < 3:
-        raise ValueError("At least three time samples are required.")
-
     dt = t[1] - t[0]
-    if dt <= 0 or not np.allclose(np.diff(t), dt, rtol=1e-5, atol=1e-8):
-        raise ValueError("The Fourier reconstruction requires a uniform time grid.")
-
     return t, theta, velocity, dt
 
 
