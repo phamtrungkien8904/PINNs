@@ -343,7 +343,7 @@ def main():
     spectrum_plot_mask = frequencies <= SPECTRUM_XMAX
 
     # Preserve the sparse measurement selection used in ver6.
-    data_indices = np.arange(0, min(1000, n_time), 10)
+    data_indices = np.arange(0, 1000, 20)
     initial_mode, initial_real, initial_imaginary = estimate_initial_mode(
         t[data_indices], theta_reference[data_indices], frequencies[:active_modes]
     )
@@ -489,9 +489,7 @@ def main():
         f"fpinn_loss_{VERSION}.png",
         f"fpinn_alpha_{VERSION}.png",
     ]
-    print("Saved outputs:")
-    for name in output_names:
-        print(f"  {OUTPUT_DIR / name}")
+    print("Figures and animations saved!")
 
 
 if __name__ == "__main__":
