@@ -1,4 +1,4 @@
-# Fourier PINN for the pendulum
+# Fourier-output PINN with a time-domain physics residual
 import time
 import matplotlib
 
@@ -9,7 +9,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -39,6 +38,11 @@ velocity_num = data[:, 2]
 
 N = len(t_num)
 dt = t_num[1] - t_num[0]
+
+if N < 3:
+    raise ValueError("At least three uniformly spaced time samples are required.")
+if not np.allclose(np.diff(t_num), dt, rtol=1e-5, atol=1e-8):
+    raise ValueError("The Fourier reconstruction requires a uniform time grid.")
 
 
 # Keep the original sparse measurement selection.
@@ -125,7 +129,7 @@ model = FourierPINN().to(device)
 
 
 def predict_from_fourier():
-    """Predict Theta and reconstruct theta, velocity, and acceleration."""
+    """Predict the Fourier coefficients and reconstruct theta(t)."""
 
     Theta_active = model(omegafreq_input)
     zero_modes = torch.zeros(
@@ -135,16 +139,32 @@ def predict_from_fourier():
     )
     Theta = torch.cat((Theta_active, zero_modes))
     theta = torch.fft.irfft(N * Theta, n=N)
-    velocity = torch.fft.irfft(N * 1j * omegafreq * Theta, n=N)
-    acceleration = torch.fft.irfft(
-        -N * omegafreq**2 * Theta,
-        n=N,
+    return Theta, theta
+
+
+def time_domain_derivatives(theta):
+    """Finite-difference derivatives on the physical time grid.
+
+    The centered second derivative is returned only at interior points. This
+    prevents the physics loss from treating the first and last samples as
+    periodic neighbours, which an FFT derivative would do automatically.
+    """
+
+    velocity_left = (-3.0 * theta[0] + 4.0 * theta[1] - theta[2]) / (2.0 * dt)
+    velocity_middle = (theta[2:] - theta[:-2]) / (2.0 * dt)
+    velocity_right = (3.0 * theta[-1] - 4.0 * theta[-2] + theta[-3]) / (2.0 * dt)
+    velocity = torch.cat(
+        (velocity_left[None], velocity_middle, velocity_right[None])
     )
-    return Theta, theta, velocity, acceleration
+
+    acceleration_interior = (
+        theta[2:] - 2.0 * theta[1:-1] + theta[:-2]
+    ) / dt**2
+    return velocity, acceleration_interior
 
 
 # Prepare the original time-domain animation, now fed by inverse-FFT output.
-t_PINN = np.linspace(t_num.min(), t_num.max(), N)
+t_PINN = t_num.copy()
 fig_anim, ax_anim = plt.subplots()
 ax_anim.plot(t_num, theta_num, label="Numerical Solution", color="orange")
 ax_anim.plot(t_data_np, theta_data_np, "o", label="Training Data", color="blue")
@@ -178,23 +198,27 @@ init_loss_history = []
 energy_loss_history = []
 
 start_time = time.time()
+print("Physics residual: time domain (centered finite differences)")
 for epoch in range(epochs + 1):
     optimizer.zero_grad()
 
-    Theta, theta_prediction, velocity_prediction, acceleration_prediction = predict_from_fourier()
+    Theta, theta_prediction = predict_from_fourier()
+    velocity_prediction, acceleration_interior = time_domain_derivatives(
+        theta_prediction
+    )
 
     # Data loss is computed from the inverse Fourier reconstruction.
     data_loss = torch.mean(
         (theta_prediction[idx_tensor] - theta_data) ** 2
     )
 
-    # Physics residual.
-    
+    # Time-domain nonlinear pendulum residual at interior time points:
+    #     theta_ddot(t) + alpha * sin(theta(t)) = 0.
     residual_physics = (
-        acceleration_prediction
-        + model.alpha * torch.sin(theta_prediction)
+        acceleration_interior
+        + model.alpha * torch.sin(theta_prediction[1:-1])
     )
-    physics_loss = torch.mean(torch.abs(residual_physics) ** 2)
+    physics_loss = torch.mean(residual_physics**2)
 
     # Initial conditions are also computed from the inverse Fourier reconstruction.
     residual_init = (
@@ -245,7 +269,7 @@ for epoch in range(epochs + 1):
 alpha_learned = model.alpha.item()
 model.eval()
 with torch.no_grad():
-    Theta_PINN, theta_PINN_tensor, _, _ = predict_from_fourier()
+    Theta_PINN, theta_PINN_tensor = predict_from_fourier()
 theta_PINN = theta_PINN_tensor.cpu().numpy()
 Theta_PINN = Theta_PINN.cpu().numpy()
 
