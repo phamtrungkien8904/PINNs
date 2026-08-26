@@ -72,6 +72,7 @@ plt.rcParams.update(
 DATA_FILE = Path("pendulum_data.dat")
 OUTPUT_DIR = Path("./Outputs")
 OUTPUT_PREFIX = "tpinn"
+LOG_FILE = OUTPUT_DIR / "TPINN.log"
 
 SEED = 0
 EPOCHS = 100000
@@ -121,6 +122,38 @@ def coefficient_of_determination(reference, prediction):
     total_sum_of_squares = np.sum((reference - np.mean(reference)) ** 2)
     residual_sum_of_squares = np.sum((reference - prediction) ** 2)
     return 1.0 - residual_sum_of_squares / total_sum_of_squares
+
+
+def save_log(
+    device,
+    thread_count,
+    data_total,
+    epoch,
+    loss,
+    learned_alpha,
+    r2,
+    runtime,
+):
+    """Save the training configuration and final results."""
+    log_lines = [
+        "Name: TPINN",
+        f"Using device: {device}",
+        f"Thread: {thread_count}",
+        f"Data_total: {data_total}",
+        f"data_stop: {DATA_STOP}",
+        f"data_step: {DATA_STEP}",
+        f"Learning rate: {LEARNING_RATE}",
+        f"Lambda data: {LAMBDA_DATA}",
+        f"Lambda physics: {LAMBDA_PHYSICS}",
+        f"Lambda initial: {LAMBDA_INITIAL}",
+        f"Lambda energy: {LAMBDA_ENERGY}",
+        f"Epoch: {epoch}",
+        f"Loss: {loss:.6e}",
+        f"Learned alpha: {learned_alpha:.6f}",
+        f"R2: {r2:.6f}",
+        f"Runtime: {runtime}",
+    ]
+    LOG_FILE.write_text("\n".join(log_lines) + "\n", encoding="utf-8")
 
 
 class TimePINN(nn.Module):
@@ -397,7 +430,18 @@ def main():
 
     print(f"\nLearned alpha: {model.alpha.item():.6f}")
     print(f"Coefficient of determination (R^2): {coefficient_determination:.6f}")
-    print(f"Runtime: {format_time(time.time() - start_time)}")
+    runtime = format_time(time.time() - start_time)
+    print(f"Runtime: {runtime}")
+    save_log(
+        device=device,
+        thread_count=torch.get_num_threads(),
+        data_total=len(t_reference),
+        epoch=epoch,
+        loss=total_loss.item(),
+        learned_alpha=model.alpha.item(),
+        r2=coefficient_determination,
+        runtime=runtime,
+    )
     print("Saving figures and animation...")
 
     save_time_animation(
@@ -416,16 +460,9 @@ def main():
         theta_final,
         history,
     )
+    print("All plots and animations saved successfully.")
 
-    output_names = [
-        f"{OUTPUT_PREFIX}_training.gif",
-        f"{OUTPUT_PREFIX}_results.png",
-        f"{OUTPUT_PREFIX}_loss.png",
-        f"{OUTPUT_PREFIX}_alpha.png",
-    ]
-    print("Saved outputs:")
-    for name in output_names:
-        print(f"  {OUTPUT_DIR / name}")
+    
 
 
 if __name__ == "__main__":
