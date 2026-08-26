@@ -93,7 +93,7 @@ initial_imaginary = -initial_sine / 2.0
 
 
 class FourierPINN(nn.Module):
-    """Map angular frequency to the real and imaginary parts of Theta."""
+    """Map angular frequency to Theta with a trainable sparse spectral path."""
 
     def __init__(self):
         super().__init__()
@@ -106,13 +106,33 @@ class FourierPINN(nn.Module):
             nn.Tanh(),
             nn.Linear(64, 2),
         )
+
+        # A pendulum spectrum contains narrow peaks. A smooth Tanh network alone
+        # strongly prefers similar values in neighbouring frequency bins, which
+        # transforms into an endpoint-localized pulse in time. Give every bin an
+        # independent trainable correction and initialize the detected dominant
+        # mode from the sparse time measurements.
+        initial_spectrum = torch.zeros(physics_modes, 2, dtype=torch.float32)
+        initial_spectrum[initial_mode, 0] = float(initial_real)
+        initial_spectrum[initial_mode, 1] = float(initial_imaginary)
+        self.spectral_coefficients = nn.Parameter(initial_spectrum)
+
+        # Begin exactly at the sparse single-mode estimate. The Tanh path learns
+        # only a small smooth correction after training starts.
+        nn.init.zeros_(self.network[-1].weight)
+        nn.init.zeros_(self.network[-1].bias)
+        self.network_correction_scale = 1e-2
+
         self.alpha = nn.Parameter(
             torch.tensor(float(alpha_init), dtype=torch.float32)
         )
 
     def forward(self, omega):
         omega_scaled = 2 * omega / omegafreq_active[-1] - 1
-        output = self.network(omega_scaled)
+        output = (
+            self.spectral_coefficients
+            + self.network_correction_scale * self.network(omega_scaled)
+        )
 
         # DC and Nyquist coefficients must be real for a real irfft signal.
         imaginary_mask = torch.ones(
@@ -180,15 +200,23 @@ ax_anim.set_title("Pendulum Fourier PINN")
 ax_anim.legend()
 
 
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+optimizer = torch.optim.Adam(
+    [
+        {"params": model.network.parameters(), "lr": 1e-4},
+        {"params": [model.spectral_coefficients], "lr": 1e-3},
+        {"params": [model.alpha], "lr": 2e-4},
+    ]
+)
 
 epochs = 100000
 animate_every = 1000
 print_every = 1000
-lamb_data = 1e0
-lamb_physics = 1e-1
-lamb_init = 1e-2
-lamb_energy = 1e-10
+warmup_epochs = 5000
+physics_ramp_epochs = 20000
+lamb_data = 1e1
+lamb_physics = 1e0
+lamb_init = 1e1
+lamb_energy = 1e-3
 
 pinn_snapshots = []
 loss_history = []
@@ -199,6 +227,10 @@ energy_loss_history = []
 
 start_time = time.time()
 print("Physics residual: time domain (centered finite differences)")
+print(
+    f"Initial dominant mode: k={initial_mode}, "
+    f"omega={omegafreq_np[initial_mode]:.6f} rad/s"
+)
 for epoch in range(epochs + 1):
     optimizer.zero_grad()
 
@@ -235,14 +267,26 @@ for epoch in range(epochs + 1):
     energy_initial = 0.5 * omega_0**2 + model.alpha * (1 - torch.cos(theta_0))
     energy_loss = torch.mean((energy_prediction - energy_initial) ** 2)
 
+    # First fit the measured trajectory and initial conditions. Then introduce
+    # the physics term continuously so optimization cannot immediately collapse
+    # to the exact but data-inconsistent zero solution.
+    if epoch < warmup_epochs:
+        physics_weight = 0.0
+    else:
+        ramp_fraction = min(
+            1.0,
+            (epoch - warmup_epochs + 1) / physics_ramp_epochs,
+        )
+        physics_weight = lamb_physics * ramp_fraction
+
     loss = (
         lamb_data * data_loss
-        + lamb_physics * physics_loss
+        + physics_weight * physics_loss
         + lamb_init * init_loss
         + lamb_energy * energy_loss
     )
     loss.backward()
-    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10.0)
     optimizer.step()
 
     loss_history.append(loss.item())
@@ -253,8 +297,16 @@ for epoch in range(epochs + 1):
 
     elapsed_time = time.time() - start_time
     if epoch % print_every == 0:
-        print(f'\rEpoch {epoch}, Loss: {loss.item():.6f}, alpha: {model.alpha.item():.6f}, Time: {time_format(elapsed_time)}',
-              end='', flush=True)
+        print(
+            f"\rEpoch {epoch}, Loss: {loss.item():.6e}, "
+            f"Data: {data_loss.item():.3e}, "
+            f"Physics: {physics_loss.item():.3e}, "
+            f"lambda_phys: {physics_weight:.3e}, "
+            f"alpha: {model.alpha.item():.6f}, "
+            f"Time: {time_format(elapsed_time)}",
+            end="",
+            flush=True,
+        )
 
     if epoch % animate_every == 0:
         model.eval()
@@ -281,7 +333,7 @@ print(f"Runtime: {time_format(time.time() - start_time)}")
 if pinn_snapshots:
     def update_frame(i):
         pinn_line.set_ydata(pinn_snapshots[i])
-        ax_anim.set_title(f"Pendulum Fourier PINN - Epoch {i * print_every}")
+        ax_anim.set_title(f"Pendulum Fourier PINN - Epoch {i * animate_every}")
         return pinn_line,
 
     anim = animation.FuncAnimation(
