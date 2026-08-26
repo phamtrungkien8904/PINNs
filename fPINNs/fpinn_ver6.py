@@ -63,7 +63,7 @@ physics_modes = min(128, len(omegafreq_np))
 omegafreq_active = omegafreq[:physics_modes]
 omegafreq_input = omegafreq_active.view(-1, 1)
 
-alpha_init = 10.0
+alpha_init = 0.0
 
 
 def estimate_initial_mode():
@@ -298,13 +298,8 @@ for epoch in range(epochs + 1):
     elapsed_time = time.time() - start_time
     if epoch % print_every == 0:
         print(
-            f"\rEpoch {epoch}, Loss: {loss.item():.6e}, "
-            f"Data: {data_loss.item():.3e}, "
-            f"Physics: {physics_loss.item():.3e}, "
-            f"lambda_phys: {physics_weight:.3e}, "
-            f"alpha: {model.alpha.item():.6f}, "
-            f"Time: {time_format(elapsed_time)}",
-            end="",
+            f'\rEpoch {epoch}, Loss: {loss.item():.6e}, alpha: {model.alpha.item():.6f}, Time: {time_format(elapsed_time)}',
+            end='',
             flush=True,
         )
 
