@@ -1,18 +1,7 @@
-"""Time-domain physics-informed neural network for a nonlinear pendulum.
-
-The network maps time directly to the angle theta(t). Angular velocity and
-acceleration are obtained with automatic differentiation, and the nonlinear
-pendulum residual is evaluated entirely in the time domain. Figures and the
-training GIF are saved only after optimization finishes.
-"""
-
 from pathlib import Path
 import time
-
 import matplotlib
-
 matplotlib.use("Agg")
-
 import matplotlib.animation as animation
 import matplotlib.pyplot as plt
 import numpy as np
@@ -85,23 +74,23 @@ OUTPUT_DIR = Path("./Outputs")
 OUTPUT_PREFIX = "tpinn"
 
 SEED = 0
-EPOCHS = 50_000
-SNAPSHOT_EVERY = 1_000
-PRINT_EVERY = 1_000
-PHYSICS_POINTS = 2_000
-PREDICTION_POINTS = 2_000
+EPOCHS = 100000
+SNAPSHOT_EVERY = 1000
+PRINT_EVERY = 1000
+PHYSICS_POINTS = 1000
+PREDICTION_POINTS = 1000
 
-DATA_STOP = 750
+DATA_STOP = 350
 DATA_STEP = 35
 
 LEARNING_RATE = 1e-3
-LAMBDA_DATA = 1e-1
-LAMBDA_PHYSICS = 1e-2
-LAMBDA_INITIAL = 1e-3
-LAMBDA_ENERGY = 1e-4
+LAMBDA_DATA = 1e1
+LAMBDA_PHYSICS = 1e0
+LAMBDA_INITIAL = 1e1
+LAMBDA_ENERGY = 1e-3
 GRADIENT_CLIP = 1.0
 
-ALPHA_INITIAL = 10.0
+ALPHA_INITIAL = 0.0
 GIF_FPS = 30
 
 
@@ -125,6 +114,13 @@ def load_data(path):
         raise ValueError("At least two time samples are required.")
 
     return data[:, 0], data[:, 1], data[:, 2]
+
+
+def coefficient_of_determination(reference, prediction):
+    """Return R^2 for a prediction against a reference trajectory."""
+    total_sum_of_squares = np.sum((reference - np.mean(reference)) ** 2)
+    residual_sum_of_squares = np.sum((reference - prediction) ** 2)
+    return 1.0 - residual_sum_of_squares / total_sum_of_squares
 
 
 class TimePINN(nn.Module):
@@ -322,7 +318,6 @@ def main():
     snapshot_epochs = []
     time_snapshots = []
 
-    print("Physics residual: time domain (automatic differentiation)")
     start_time = time.time()
 
     for epoch in range(EPOCHS + 1):
@@ -393,8 +388,15 @@ def main():
     model.eval()
     with torch.no_grad():
         theta_final = model(t_prediction_tensor).cpu().numpy().ravel()
+    theta_reference_at_prediction = np.interp(
+        t_prediction, t_reference, theta_reference
+    )
+    coefficient_determination = coefficient_of_determination(
+        theta_reference_at_prediction, theta_final
+    )
 
     print(f"\nLearned alpha: {model.alpha.item():.6f}")
+    print(f"Coefficient of determination (R^2): {coefficient_determination:.6f}")
     print(f"Runtime: {format_time(time.time() - start_time)}")
     print("Saving figures and animation...")
 
