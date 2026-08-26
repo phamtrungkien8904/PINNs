@@ -1,5 +1,6 @@
-import os
+import matplotlib
 import matplotlib.animation as animation
+matplotlib.use("Agg")
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
@@ -96,9 +97,9 @@ theta_num = data[:, 1]
 omega_num = data[:, 2]
 
 
-t_data = data[:350:35, 0]
-theta_data = data[:350:35, 1]
-omega_data = data[:350:35, 2]
+t_data = data[:750:35, 0]
+theta_data = data[:750:35, 1]
+omega_data = data[:750:35, 2]
 
 # keep numpy copies for plotting/animation after we convert to tensors
 t_data_np = t_data.copy()
