@@ -1,29 +1,84 @@
-"""Fourier-output PINN for a nonlinear pendulum.
-
-The network predicts Fourier coefficients, while the pendulum residual is
-evaluated in the time domain after an inverse FFT. All plots and animations
-are written only after training.
-"""
-
 from pathlib import Path
 import time
-
 import matplotlib
-
 matplotlib.use("Agg")
-
 import matplotlib.animation as animation
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
 
+plt.style.use("classic")
+plt.rcParams.update({
+    "text.usetex": True,
+    'text.latex.preamble': r'''
+    \usepackage[T1]{fontenc}
+    \usepackage{lmodern}
+    \usepackage[utf8]{inputenc}
+    \usepackage{amsmath}
+    \usepackage{amssymb}
+    \usepackage{siunitx}
+    \usepackage{sfmath}
+    '''
+})
+plt.rcParams.update({
+    # Figure settings
+    'figure.dpi': 300,
+    'figure.figsize': (10/2.54, 6/2.54),  # 10x6 cm in inches (1 figure per line)
+    # 'figure.figsize': (8/2.54, 6/2.54),  # 10x6 cm in inches (2 figures per line)
+    'figure.facecolor': 'white',
+    'axes.facecolor': 'white',
+    'axes.edgecolor': 'black',
+    'axes.linewidth': 1,
+    'axes.labelsize': 8,
+    'axes.titlesize': 8,
+    'axes.labelcolor': 'black',
+    'savefig.facecolor': 'white',
+    'font.family': 'sans-serif',
+    'font.sans-serif': 'Arial',
+    # 'mathtext.fontset': 'cm',
+    'figure.constrained_layout.use': True,
+
+    # Ticks
+    "xtick.direction": "in",
+    "ytick.direction": "in",
+    "xtick.top": True,
+    "ytick.right": True,
+    "xtick.major.size": 4,
+    "ytick.major.size": 4,
+    "xtick.major.width": 1,
+    "ytick.major.width": 1,
+    "xtick.minor.visible": True,
+    "ytick.minor.visible": True,
+    "xtick.minor.size": 0,
+    "ytick.minor.size": 0,
+    "xtick.minor.width":0,
+    "ytick.minor.width": 0,
+    "xtick.labelsize": 8,
+    "ytick.labelsize": 8,  
+
+    # Legend
+    'legend.frameon': False,
+    'legend.title_fontsize': 8,
+    'legend.fontsize': 8,
+    'legend.handlelength': 2,
+    'legend.loc': 'best',
+    'legend.numpoints': 1,
+
+    # Line style
+    'lines.linestyle': '-',
+    'lines.linewidth': 1,
+    'lines.markersize': 4,
+    'lines.markeredgecolor': 'white',
+    'lines.markeredgewidth': 0.5,
+})
+
 
 # -----------------------------------------------------------------------------
 # Configuration
 # -----------------------------------------------------------------------------
 DATA_FILE = Path("pendulum_data.dat")
-OUTPUT_DIR = Path(".")
+OUTPUT_DIR = Path("./Outputs")
 VERSION = "ver7"
 
 SEED = 0
@@ -46,7 +101,6 @@ SPECTRUM_YMAX = 1.0
 GIF_FPS = 30
 
 
-plt.style.use("classic")
 torch.manual_seed(SEED)
 np.random.seed(SEED)
 
@@ -310,7 +364,6 @@ def save_figures(
         ylabel=r"$\alpha$",
         title=r"Learned $\alpha$ During Training",
     )
-    ax.grid(alpha=0.3)
     fig.savefig(OUTPUT_DIR / f"fpinn_alpha_{VERSION}.png", dpi=600)
     plt.close(fig)
 
@@ -371,11 +424,6 @@ def main():
     time_snapshots = []
     spectrum_snapshots = []
 
-    print("Physics residual: time domain (centered finite differences)")
-    print(
-        f"Initial dominant mode: k={initial_mode}, "
-        f"omega={frequencies[initial_mode]:.6f} rad/s"
-    )
     start_time = time.time()
 
     for epoch in range(EPOCHS + 1):
@@ -468,15 +516,6 @@ def main():
         spectrum_final,
         history,
     )
-
-    output_names = [
-        f"fpinn_training_{VERSION}.gif",
-        f"fpinn_spectrum_evolution_{VERSION}.gif",
-        f"fpinn_results_{VERSION}.png",
-        f"fpinn_spectrum_{VERSION}.png",
-        f"fpinn_loss_{VERSION}.png",
-        f"fpinn_alpha_{VERSION}.png",
-    ]
     print("Figures and animations saved!")
 
 
