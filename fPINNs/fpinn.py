@@ -78,15 +78,15 @@ plt.rcParams.update({
 # Configuration
 # -----------------------------------------------------------------------------
 DATA_FILE = Path("pendulum_data.dat")
-OUTPUT_DIR = Path("./Outputs")
-VERSION = "ver7"
-LOG_FILE = OUTPUT_DIR / "FPINN_ver7.log"
+OUTPUT_DIR = Path("./Outputs/fpinn001")
+VERSION = "001"
+LOG_FILE = OUTPUT_DIR / "FPINN_001.log"
 
 SEED = 0
-EPOCHS = 100_000
+EPOCHS = 300_000
 SNAPSHOT_EVERY = 1_000
 PRINT_EVERY = 1_000
-MAX_PHYSICS_MODES = 128
+MAX_PHYSICS_MODES = 512
 
 WARMUP_EPOCHS = 5_000
 PHYSICS_RAMP_EPOCHS = 20_000
@@ -262,7 +262,7 @@ def save_log(
 ):
     """Save the training configuration and final results."""
     log_lines = [
-        "Name: FPINN ver7",
+        "Name: FPINN 001",
         f"Using device: {device}",
         f"Thread: {thread_count}",
         f"Data_total: {data_total}",

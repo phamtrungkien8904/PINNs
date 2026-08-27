@@ -1,4 +1,4 @@
-Name: FPINN ver7
+Name: FPINN 001
 Using device: cpu
 Thread: 4
 Data_total: 1000
@@ -9,8 +9,8 @@ Lambda data: 10.0
 Lambda physics: 1.0
 Lambda initial: 10.0
 Lambda energy: 0.001
-Epoch: 100000
-Loss: 4.328729e+00
-Learned alpha: 6.764032
-R2: -0.092852
-Runtime: 00:00:59
+Epoch: 300000
+Loss: 1.237432e+03
+Learned alpha: 11.400838
+R2: 0.707643
+Runtime: 00:03:23
