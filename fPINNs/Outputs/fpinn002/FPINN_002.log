@@ -4,13 +4,13 @@ Thread: 4
 Data_total: 2000
 data_stop: 350
 data_step: 35
-Learning rate: network=0.001, spectrum=0.001, alpha=0.0002
+Learning rate: network=0.0001, spectrum=0.001, alpha=0.0002
 Lambda data: 10.0
 Lambda physics: 1.0
 Lambda initial: 10.0
 Lambda energy: 0.001
-Epoch: 100000
-Loss: 8.728810e+02
-Learned alpha: 9.961139
-R2: 0.977000
-Runtime: 00:01:13
+Epoch: 200000
+Loss: 2.387015e+02
+Learned alpha: 10.191950
+R2: 0.998039
+Runtime: 00:02:27
