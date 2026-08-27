@@ -1,16 +1,16 @@
 Name: FPINN 001
 Using device: cpu
 Thread: 4
-Data_total: 1000
-data_stop: 350
-data_step: 35
+Data_total: 2000
+data_stop: 400
+data_step: 20
 Learning rate: network=0.0001, spectrum=0.001, alpha=0.0002
 Lambda data: 10.0
 Lambda physics: 1.0
 Lambda initial: 10.0
 Lambda energy: 0.001
 Epoch: 100000
-Loss: 1.282425e+03
-Learned alpha: 8.535690
-R2: 0.647805
-Runtime: 00:01:08
+Loss: 2.033848e+00
+Learned alpha: 8.122309
+R2: -0.619030
+Runtime: 00:00:58

@@ -78,15 +78,16 @@ plt.rcParams.update({
 # Configuration
 # -----------------------------------------------------------------------------
 DATA_FILE = Path("pendulum_data.dat")
-OUTPUT_DIR = Path("./Outputs/fpinn001")
-VERSION = "001"
-LOG_FILE = OUTPUT_DIR / "FPINN_001.log"
+OUTPUT_DIR = Path("./Outputs/fpinn002")
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+VERSION = "002"
+LOG_FILE = OUTPUT_DIR / "FPINN_002.log"
 
 SEED = 0
-EPOCHS = 300_000
+EPOCHS = 200_000
 SNAPSHOT_EVERY = 1_000
 PRINT_EVERY = 1_000
-MAX_PHYSICS_MODES = 512
+MAX_PHYSICS_MODES = 128
 
 WARMUP_EPOCHS = 5_000
 PHYSICS_RAMP_EPOCHS = 20_000
@@ -96,8 +97,8 @@ LAMBDA_PHYSICS = 1e0
 LAMBDA_INITIAL = 1e1
 LAMBDA_ENERGY = 1e-3
 
-DATA_STOP = 350
-DATA_STEP = 35
+DATA_STOP = 400
+DATA_STEP = 20
 LEARNING_RATE_NETWORK = 1e-4
 LEARNING_RATE_SPECTRUM = 1e-3
 LEARNING_RATE_ALPHA = 2e-4

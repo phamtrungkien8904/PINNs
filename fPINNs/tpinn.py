@@ -70,19 +70,20 @@ plt.rcParams.update(
 # Configuration
 # -----------------------------------------------------------------------------
 DATA_FILE = Path("pendulum_data.dat")
-OUTPUT_DIR = Path("./Outputs")
+OUTPUT_DIR = Path("./Outputs/tpinn002")
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_PREFIX = "tpinn"
 LOG_FILE = OUTPUT_DIR / "TPINN.log"
 
 SEED = 0
-EPOCHS = 100000
+EPOCHS = 200000
 SNAPSHOT_EVERY = 1000
 PRINT_EVERY = 1000
-PHYSICS_POINTS = 1000
-PREDICTION_POINTS = 1000
+PHYSICS_POINTS = 2000
+PREDICTION_POINTS = 2000
 
-DATA_STOP = 350
-DATA_STEP = 35
+DATA_STOP = 400
+DATA_STEP = 20
 
 LEARNING_RATE = 1e-3
 LAMBDA_DATA = 1e1
