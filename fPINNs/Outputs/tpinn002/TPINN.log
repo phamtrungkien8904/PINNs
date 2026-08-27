@@ -2,15 +2,15 @@ Name: TPINN
 Using device: cpu
 Thread: 4
 Data_total: 2000
-data_stop: 400
-data_step: 20
+data_stop: 350
+data_step: 35
 Learning rate: 0.001
 Lambda data: 10.0
 Lambda physics: 1.0
 Lambda initial: 10.0
 Lambda energy: 0.001
 Epoch: 100000
-Loss: 3.459134e-01
-Learned alpha: 0.179023
-R2: -113.233150
-Runtime: 00:03:39
+Loss: 9.613498e-03
+Learned alpha: 9.919103
+R2: 0.569203
+Runtime: 00:04:58
