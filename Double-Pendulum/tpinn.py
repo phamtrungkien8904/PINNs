@@ -69,14 +69,14 @@ plt.rcParams.update(
 # -----------------------------------------------------------------------------
 # Configuration
 # -----------------------------------------------------------------------------
-DATA_FILE = Path("double_pendulum_data.dat")
+DATA_FILE = Path("pendulum_data.dat")
 OUTPUT_DIR = Path("./Outputs/tpinn001")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_PREFIX = "tpinn"
 LOG_FILE = OUTPUT_DIR / "TPINN.log"
 
 SEED = 0
-EPOCHS = 100000
+EPOCHS = 200000
 SNAPSHOT_EVERY = 1000
 PRINT_EVERY = 100
 PHYSICS_POINTS = 2000
@@ -92,9 +92,15 @@ LAMBDA_INITIAL = 1e1
 LAMBDA_ENERGY = 1e-3
 GRADIENT_CLIP = 1.0
 
-ALPHA_INITIAL = 0.0
+ALPHA = 10.0
 GIF_FPS = 30
 
+# Physical Parameters
+m1 = 1.0
+m2 = 1.0
+l1 = 1.0
+l2 = 1.0
+g = 10.0
 
 torch.manual_seed(SEED)
 np.random.seed(SEED)
@@ -107,13 +113,8 @@ def format_time(seconds):
 
 
 def load_data(path):
-    """Load the time, angle, and angular-velocity columns."""
-
+    """Load the time, angle 1, and angle 2 columns."""
     data = np.loadtxt(path, skiprows=1)
-    if data.ndim != 2 or data.shape[1] < 3:
-        raise ValueError("Data must contain time, angle, and velocity columns.")
-    if len(data) < 2:
-        raise ValueError("At least two time samples are required.")
 
     return data[:, 0], data[:, 1], data[:, 2]
 
@@ -131,7 +132,6 @@ def save_log(
     data_total,
     epoch,
     loss,
-    learned_alpha,
     r2,
     runtime,
 ):
@@ -150,7 +150,6 @@ def save_log(
         f"Lambda energy: {LAMBDA_ENERGY}",
         f"Epoch: {epoch}",
         f"Loss: {loss:.6e}",
-        f"Learned alpha: {learned_alpha:.6f}",
         f"R2: {r2:.6f}",
         f"Runtime: {runtime}",
     ]
@@ -174,7 +173,6 @@ class TimePINN(nn.Module):
             nn.Tanh(),
             nn.Linear(64, 1),
         )
-        self.alpha = nn.Parameter(torch.tensor(ALPHA_INITIAL, dtype=torch.float32))
 
     def forward(self, t):
         t_scaled = 2.0 * (t - self.time_min) / (self.time_max - self.time_min) - 1.0
@@ -248,7 +246,7 @@ def save_figures(
     theta_prediction,
     history,
 ):
-    """Save the final trajectory, loss history, and alpha history."""
+    """Save the final trajectory, loss history."""
 
     fig, ax = plt.subplots()
     ax.plot(t_reference, theta_reference, color="orange", label="Numerical Solution")
@@ -293,17 +291,6 @@ def save_figures(
     fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_loss.png", dpi=600)
     plt.close(fig)
 
-    fig, ax = plt.subplots()
-    ax.plot(epoch_axis, history["alpha"], color="darkcyan")
-    ax.set(
-        xlabel="Epochs",
-        ylabel=r"$\alpha$",
-        title=r"Learned $\alpha$ During Training",
-    )
-    fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_alpha.png", dpi=600)
-    plt.close(fig)
-
-
 def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -347,7 +334,7 @@ def main():
 
     history = {
         name: []
-        for name in ("total", "data", "physics", "initial", "energy", "alpha")
+        for name in ("total", "data", "physics", "initial", "energy")
     }
     snapshot_epochs = []
     time_snapshots = []
@@ -366,7 +353,7 @@ def main():
             theta_physics, t_physics
         )
         physics_residual = (
-            acceleration_physics + model.alpha * torch.sin(theta_physics)
+            acceleration_physics + ALPHA * torch.sin(theta_physics)
         )
         physics_loss = torch.mean(physics_residual**2)
 
@@ -377,11 +364,11 @@ def main():
 
         energy_physics = (
             0.5 * velocity_physics**2
-            + model.alpha * (1.0 - torch.cos(theta_physics))
+            + ALPHA * (1.0 - torch.cos(theta_physics))
         )
         initial_energy = (
             0.5 * velocity_data[0] ** 2
-            + model.alpha * (1.0 - torch.cos(theta_data[0]))
+            + ALPHA * (1.0 - torch.cos(theta_data[0]))
         )
         energy_loss = torch.mean((energy_physics - initial_energy) ** 2)
 
@@ -400,14 +387,12 @@ def main():
         history["physics"].append(physics_loss.item())
         history["initial"].append(initial_loss.item())
         history["energy"].append(energy_loss.item())
-        history["alpha"].append(model.alpha.item())
 
         if epoch % PRINT_EVERY == 0:
             elapsed = format_time(time.time() - start_time)
             print(
-                f"\rEpoch {epoch:6d} | Loss {total_loss.item():.6e} | "
-                f"alpha {model.alpha.item():.6f} | Time {elapsed}",
-                end="",
+                f'\rEpoch {epoch:6d} | Loss {total_loss.item():.6e} | Time {elapsed}',
+                end='',
                 flush=True,
             )
 
@@ -429,8 +414,7 @@ def main():
         theta_reference_at_prediction, theta_final
     )
 
-    print(f"\nLearned alpha: {model.alpha.item():.6f}")
-    print(f"Coefficient of determination (R^2): {coefficient_determination:.6f}")
+    print(f"\nCoefficient of determination (R^2): {coefficient_determination:.6f}")
     runtime = format_time(time.time() - start_time)
     print(f"Runtime: {runtime}")
     save_log(
@@ -439,7 +423,6 @@ def main():
         data_total=len(t_reference),
         epoch=epoch,
         loss=total_loss.item(),
-        learned_alpha=model.alpha.item(),
         r2=coefficient_determination,
         runtime=runtime,
     )
