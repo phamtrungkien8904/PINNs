@@ -95,9 +95,9 @@ def deriv(y, t, L1, L2, m1, m2):
 
     return theta1dot, theta1dotdot, theta2dot, theta2dotdot
 
-tmax, dt = 10, 0.001
+tmax, dt = 20, 0.001
 t = np.arange(0, tmax + dt, dt)
-y0 = np.array([-np.pi/9, 0, np.pi/20, 0])
+y0 = np.array([-np.pi/9, 0, -np.pi/10, 0])
 y = odeint(deriv, y0, t, args=(L1, L2, m1, m2))
 
 theta1, theta2 = y[:, 0], y[:, 2]
@@ -176,6 +176,10 @@ ax.set_ylabel("Angle (rad)")
 ax.legend()
 plt.savefig("double_pendulum_ver1.png", dpi=600)
 plt.show()
+
+
+np.savetxt("double_pendulum_data.dat", np.column_stack((t, theta1, theta2)), header="# Time(s) Theta1(rad) Theta2(rad)", comments='')
+
 
 # bins = len(t)  # Number of bins for FFT, power of 2 for efficiency
 # signal_fft1 = np.fft.fft(theta1, n=bins)

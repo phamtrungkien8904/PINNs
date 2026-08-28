@@ -69,8 +69,8 @@ plt.rcParams.update(
 # -----------------------------------------------------------------------------
 # Configuration
 # -----------------------------------------------------------------------------
-DATA_FILE = Path("pendulum_data.dat")
-OUTPUT_DIR = Path("./Outputs/tpinn002")
+DATA_FILE = Path("double_pendulum_data.dat")
+OUTPUT_DIR = Path("./Outputs/tpinn001")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_PREFIX = "tpinn"
 LOG_FILE = OUTPUT_DIR / "TPINN.log"
