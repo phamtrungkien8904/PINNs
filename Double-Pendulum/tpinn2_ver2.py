@@ -78,14 +78,14 @@ OUTPUT_PREFIX = "tpinn_double"
 LOG_FILE = OUTPUT_DIR / "TPINN_double.log"
 
 SEED = 0
-EPOCHS = 100000
+EPOCHS = 500000
 SNAPSHOT_EVERY = 1000
 PRINT_EVERY = 100
 PHYSICS_POINTS = 2000
 PREDICTION_POINTS = 2000
 
-DATA_STOP = 5500    
-DATA_STEP = 110
+DATA_STOP = 3500    
+DATA_STEP = 70
 
 LEARNING_RATE = 1e-3
 LAMBDA_DATA = 1e1
@@ -224,19 +224,6 @@ def mechanics(theta1, theta2, omega1, omega2):
 
 def explicit_physics_residuals(model, t):
     """Return the explicit double-pendulum ODE residuals f1 and f2.
-
-    With Delta = theta1 - theta2, the Euler-Lagrange equations are
-
-        f1 = (m1 + m2) l1 theta1_ddot
-             + m2 l2 theta2_ddot cos(Delta)
-             + m2 l2 theta2_dot^2 sin(Delta)
-             + (m1 + m2) g sin(theta1) = 0
-
-        f2 = m2 l2 theta2_ddot
-             + m2 l1 theta1_ddot cos(Delta)
-             - m2 l1 theta1_dot^2 sin(Delta)
-             + m2 g sin(theta2) = 0
-
     These are the explicit differential equations obtained from the
     Euler-Lagrange equations after dividing the first equation by l1 and
     the second equation by l2.
@@ -246,24 +233,25 @@ def explicit_physics_residuals(model, t):
 
     omega1 = derivative(theta1, t)
     omega2 = derivative(theta2, t)
-    alpha1 = derivative(omega1, t)
-    alpha2 = derivative(omega2, t)
+    gamma1 = derivative(omega1, t)
+    gamma2 = derivative(omega2, t)
 
-    delta = theta1 - theta2
-
-    f1 = (
-        (m1 + m2) * l1 * alpha1
-        + m2 * l2 * alpha2 * torch.cos(delta)
-        + m2 * l2 * omega2**2 * torch.sin(delta)
-        + (m1 + m2) * g * torch.sin(theta1)
+    numer1 = (
+        m2 * g * torch.sin(theta2) * torch.cos(theta1 - theta2)
+        - m2* torch.sin(theta1 - theta2)*(l1 * omega1**2 *torch.cos(theta1 - theta2) + l2 * omega2**2)
+        -(m1 + m2) * g * torch.sin(theta1)
     )
+    denom1 = l1 * (m1 + m2 * (torch.sin(theta1 - theta2))**2)
 
-    f2 = (
-        m2 * l2 * alpha2
-        + m2 * l1 * alpha1 * torch.cos(delta)
-        - m2 * l1 * omega1**2 * torch.sin(delta)
-        + m2 * g * torch.sin(theta2)
+    numer2 = (
+        (m1 + m2)*(l1* omega1**2 * torch.sin(theta1 - theta2) - g*torch.sin(theta2)
+                   + g* torch.sin(theta1) * torch.cos(theta1-theta2))
+        +m2*l2 * omega2**2 * torch.sin(theta1 - theta2) * torch.cos(theta1 - theta2)
     )
+    denom2 = l2 * (m1 + m2 *(torch.sin(theta1 - theta2))**2)
+
+    f1 = gamma1 - numer1/denom1
+    f2 = gamma2 - numer2/denom2
 
     # Energy is still computed from T + V for the energy-conservation loss.
     _, _, _, energy = mechanics(theta1, theta2, omega1, omega2)
