@@ -73,9 +73,9 @@ plt.rcParams.update(
 # Configuration
 # -----------------------------------------------------------------------------
 DATA_FILE = Path("double_pendulum_data.dat")
-OUTPUT_DIR = Path("./Outputs/tpinn_double001")
-OUTPUT_PREFIX = "tpinn_double"
-LOG_FILE = OUTPUT_DIR / "TPINN_double.log"
+OUTPUT_DIR = Path("./Outputs/tpinn2")
+OUTPUT_PREFIX = "tpinn2"
+LOG_FILE = OUTPUT_DIR / "TPINN2.log"
 
 SEED = 0
 EPOCHS = 500000

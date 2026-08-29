@@ -73,13 +73,12 @@ plt.rcParams.update(
 # Configuration
 # -----------------------------------------------------------------------------
 DATA_FILE = Path("double_pendulum_data.dat")
-OUTPUT_DIR = Path("./Outputs/fpinn_double001")
-OUTPUT_PREFIX = "fpinn_double"
-VERSION = "001"
-LOG_FILE = OUTPUT_DIR / f"FPINN_double_{VERSION}.log"
+OUTPUT_DIR = Path("./Outputs/fpinn2")
+OUTPUT_PREFIX = "fpinn2"
+LOG_FILE = OUTPUT_DIR / f"FPINN2.log"
 
 SEED = 0
-EPOCHS = 200_000
+EPOCHS = 100_000
 SNAPSHOT_EVERY = 1_000
 PRINT_EVERY = 100
 MAX_PHYSICS_MODES = 512
@@ -88,11 +87,11 @@ MAX_PHYSICS_MODES = 512
 WARMUP_EPOCHS = 5_000
 PHYSICS_RAMP_EPOCHS = 20_000
 
-DATA_STOP = 3500
-DATA_STEP = 70
+DATA_STOP = 1100
+DATA_STEP = 20
 
 LEARNING_RATE_NETWORK = 1e-4
-LEARNING_RATE_SPECTRUM = 1e-3
+LEARNING_RATE_SPECTRUM = 1e-4
 
 LAMBDA_DATA = 1e1
 LAMBDA_PHYSICS = 1e0
@@ -137,34 +136,16 @@ def load_data(path):
     If they are absent, they are estimated from the numerical trajectory.
     """
     data = np.loadtxt(path, skiprows=1)
-    if data.ndim != 2 or data.shape[1] < 3:
-        raise ValueError(
-            "DATA_FILE must contain at least 3 columns: t, theta1, theta2."
-        )
 
     t = data[:, 0]
     theta1 = data[:, 1]
     theta2 = data[:, 2]
 
-    if len(t) < 4:
-        raise ValueError("Fourier PINN requires at least 4 time samples.")
-
     dt_all = np.diff(t)
     dt = float(np.mean(dt_all))
-    if dt <= 0.0:
-        raise ValueError("Time values must be strictly increasing.")
-    if not np.allclose(dt_all, dt, rtol=1e-5, atol=1e-10):
-        raise ValueError(
-            "Fourier PINN requires a uniformly sampled time grid. "
-            "Resample double_pendulum_data.dat before training."
-        )
 
-    if data.shape[1] >= 5:
-        omega1 = data[:, 3]
-        omega2 = data[:, 4]
-    else:
-        omega1 = np.gradient(theta1, t, edge_order=2)
-        omega2 = np.gradient(theta2, t, edge_order=2)
+    omega1 = np.gradient(theta1, t, edge_order=2)
+    omega2 = np.gradient(theta2, t, edge_order=2)
 
     return t, theta1, theta2, omega1, omega2, dt
 
@@ -172,8 +153,6 @@ def load_data(path):
 def coefficient_of_determination(reference, prediction):
     total = np.sum((reference - np.mean(reference)) ** 2)
     residual = np.sum((reference - prediction) ** 2)
-    if total == 0.0:
-        return np.nan
     return 1.0 - residual / total
 
 
@@ -434,7 +413,7 @@ def save_time_animation(
 
     movie = animation.FuncAnimation(fig, update, frames=len(snapshots), blit=True)
     movie.save(
-        OUTPUT_DIR / f"{OUTPUT_PREFIX}_training_{VERSION}.gif",
+        OUTPUT_DIR / f"{OUTPUT_PREFIX}_training.gif",
         writer=animation.PillowWriter(fps=GIF_FPS),
     )
     plt.close(fig)
@@ -462,7 +441,7 @@ def save_spectrum_animation(frequencies, reference, snapshots, epochs):
 
     movie = animation.FuncAnimation(fig, update, frames=len(snapshots), blit=True)
     movie.save(
-        OUTPUT_DIR / f"{OUTPUT_PREFIX}_spectrum_evolution_{VERSION}.gif",
+        OUTPUT_DIR / f"{OUTPUT_PREFIX}_spectrum_evolution.gif",
         writer=animation.PillowWriter(fps=GIF_FPS),
     )
     plt.close(fig)
@@ -488,7 +467,7 @@ def save_figures(
     ax.plot(t, theta_prediction[:, 1], "--", color="red", label=r"FPINN $\theta_2$")
     ax.set(xlabel="Time (s)", ylabel="Angle (rad)", title="Double Pendulum Fourier PINN")
     ax.legend(ncol=2)
-    fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_results_{VERSION}.png", dpi=600)
+    fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_results.png", dpi=600)
     plt.close(fig)
 
     fig, ax = plt.subplots()
@@ -500,7 +479,7 @@ def save_figures(
     if SPECTRUM_YMAX is not None:
         ax.set_ylim(0, SPECTRUM_YMAX)
     ax.legend(ncol=2)
-    fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_spectrum_{VERSION}.png", dpi=600)
+    fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_spectrum.png", dpi=600)
     plt.close(fig)
 
     epoch_axis = np.arange(len(history["total"]))
@@ -512,7 +491,7 @@ def save_figures(
     ax.semilogy(epoch_axis, history["energy"], color="purple", label="Energy Loss")
     ax.set(xlabel="Epochs", ylabel="Loss", title="Loss Convergence")
     ax.legend()
-    fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_loss_{VERSION}.png", dpi=600)
+    fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_loss.png", dpi=600)
     plt.close(fig)
 
 
@@ -538,8 +517,6 @@ def main():
 
     data_stop = min(DATA_STOP, n_time)
     data_indices = np.arange(0, data_stop, DATA_STEP)
-    if len(data_indices) == 0:
-        raise ValueError("No training points selected. Check DATA_STOP and DATA_STEP.")
 
     # Initialize Theta1 and Theta2 independently from sparse measurements.
     initial_1 = estimate_initial_mode(
@@ -664,12 +641,8 @@ def main():
             elapsed = format_time(time.time() - start_time)
             physics_weight = current_physics_weight(epoch)
             print(
-                f"\rEpoch {epoch:6d} | Loss {total_loss.item():.6e} "
-                f"| Data {data_loss.item():.3e} "
-                f"| Physics {physics_loss.item():.3e} "
-                f"| lambda_f {physics_weight:.3e} "
-                f"| Time {elapsed}",
-                end="",
+                f'\rEpoch {epoch:6d} | Loss {total_loss.item():.6e} | Time {elapsed}',
+                end='',
                 flush=True,
             )
 
