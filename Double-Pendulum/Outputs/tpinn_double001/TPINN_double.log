@@ -14,9 +14,9 @@ Lambda data: 10.0
 Lambda physics: 1.0
 Lambda initial: 10.0
 Lambda energy: 0.1
-Epoch: 10000
-Loss: 3.831976e-01
-R2 theta1: 0.349909
-R2 theta2: 0.348965
-R2 mean: 0.349437
-Runtime: 00:01:23
+Epoch: 100000
+Loss: 2.980927e-02
+R2 theta1: 0.961956
+R2 theta2: 0.962580
+R2 mean: 0.962268
+Runtime: 00:14:06
