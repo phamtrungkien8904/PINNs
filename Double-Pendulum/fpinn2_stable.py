@@ -78,27 +78,30 @@ OUTPUT_PREFIX = "fpinn2"
 LOG_FILE = OUTPUT_DIR / f"FPINN2.log"
 
 SEED = 0
-EPOCHS = 200_000
+EPOCHS = 100_000
 SNAPSHOT_EVERY = 1_000
 PRINT_EVERY = 100
-MAX_PHYSICS_MODES = 512
+MAX_ANGULAR_FREQUENCY = 20.0
+INITIALIZATION_OMEGA_MAX = 12.0
+INITIALIZATION_RIDGE = 1e-3
+PHYSICS_MARGIN_FRACTION = 0.03
 
 # Train the Fourier representation on data/IC first, then introduce physics.
-WARMUP_EPOCHS = 5_000
-PHYSICS_RAMP_EPOCHS = 20_000
+WARMUP_EPOCHS = 10_000
+PHYSICS_RAMP_EPOCHS = 30_000
 
-DATA_STOP = 1000
-DATA_STEP = 10
+DATA_STOP = 2000
+DATA_STEP = 20
 
 LEARNING_RATE_NETWORK = 1e-4
-LEARNING_RATE_SPECTRUM = 1e-4
+LEARNING_RATE_SPECTRUM = 2e-4
 
-LAMBDA_DATA = 1e2
-LAMBDA_PHYSICS = 1e-3
-LAMBDA_INITIAL = 5e1
-LAMBDA_ENERGY = 1e-5
+LAMBDA_DATA = 5e2
+LAMBDA_PHYSICS = 1e1
+LAMBDA_INITIAL = 1e2
+LAMBDA_ENERGY = 1.0
 
-GRADIENT_CLIP = 1.0
+GRADIENT_CLIP = 100.0
 
 SPECTRUM_XMAX = 20.0
 SPECTRUM_YMAX = None
@@ -126,6 +129,16 @@ def format_time(seconds):
 
 
 def load_data(path):
+    """Load a uniformly sampled double-pendulum trajectory.
+
+    Accepted columns:
+        t, theta1, theta2
+    or
+        t, theta1, theta2, omega1, omega2
+
+    Angular velocities are only needed as targets for the initial condition.
+    If they are absent, they are estimated from the numerical trajectory.
+    """
     data = np.loadtxt(path, skiprows=1)
 
     t = data[:, 0]
@@ -135,8 +148,12 @@ def load_data(path):
     dt_all = np.diff(t)
     dt = float(np.mean(dt_all))
 
-    omega1 = np.gradient(theta1, t, edge_order=2)
-    omega2 = np.gradient(theta2, t, edge_order=2)
+    if data.shape[1] >= 5:
+        omega1 = data[:, 3]
+        omega2 = data[:, 4]
+    else:
+        omega1 = np.gradient(theta1, t, edge_order=2)
+        omega2 = np.gradient(theta2, t, edge_order=2)
 
     return t, theta1, theta2, omega1, omega2, dt
 
@@ -147,28 +164,39 @@ def coefficient_of_determination(reference, prediction):
     return 1.0 - residual / total
 
 
-def estimate_initial_mode(t_data, theta_data, frequencies):
-    """Fit one sinusoidal mode to sparse measurements for initialization."""
-    errors = np.full(len(frequencies), np.inf)
-    coefficients = np.zeros((len(frequencies), 2))
+def estimate_initial_spectrum(t_data, theta_data, frequencies):
+    """Ridge-fit several Fourier modes to the sparse measurements.
 
-    # DC initialization from the sparse mean.
-    dc = float(np.mean(theta_data))
+    The old code initialized each angle with only one sinusoid.  A double
+    pendulum clearly contains more than one dominant frequency, so a small
+    multimode initialization gives Adam a much better starting point.
+    """
+    frequencies = np.asarray(frequencies)
+    use = frequencies <= INITIALIZATION_OMEGA_MAX
+    used_frequencies = frequencies[use]
 
-    for mode, frequency in enumerate(frequencies[1:], start=1):
-        design = np.column_stack(
-            (np.cos(frequency * t_data), np.sin(frequency * t_data))
-        )
-        coefficient, *_ = np.linalg.lstsq(design, theta_data - dc, rcond=None)
-        coefficients[mode] = coefficient
-        errors[mode] = np.mean((dc + design @ coefficient - theta_data) ** 2)
+    columns = [np.ones_like(t_data)]
+    for w in used_frequencies[1:]:
+        columns.append(np.cos(w * t_data))
+        columns.append(np.sin(w * t_data))
+    design = np.column_stack(columns)
 
-    mode = int(np.argmin(errors))
-    cosine, sine = coefficients[mode]
+    # Ridge regression is stable even when the sparse-data design is close to
+    # square or mildly underdetermined.  Do not penalize the DC coefficient.
+    gram = design.T @ design
+    penalty = INITIALIZATION_RIDGE * np.eye(gram.shape[0])
+    penalty[0, 0] = 0.0
+    beta = np.linalg.solve(gram + penalty, design.T @ theta_data)
 
-    # With the normalized rFFT convention used below:
-    # A cos(wt) + B sin(wt) <-> (A/2) - i(B/2) at positive frequency.
-    return dc, mode, cosine / 2.0, -sine / 2.0
+    spectrum = np.zeros(len(frequencies), dtype=np.complex128)
+    spectrum[0] = beta[0]
+    j = 1
+    for k in range(1, len(used_frequencies)):
+        cosine = beta[j]
+        sine = beta[j + 1]
+        spectrum[k] = cosine / 2.0 - 1j * sine / 2.0
+        j += 2
+    return spectrum
 
 
 # -----------------------------------------------------------------------------
@@ -196,12 +224,16 @@ class DoubleFourierPINN(nn.Module):
 
         initial_spectrum = torch.zeros(len(frequencies), 4, dtype=torch.float32)
 
-        for angle_index, (dc, mode, real, imaginary) in enumerate(initial_parameters):
+        for angle_index, coefficients in enumerate(initial_parameters):
+            coefficients = np.asarray(coefficients)
             real_col = 2 * angle_index
             imag_col = real_col + 1
-            initial_spectrum[0, real_col] = dc
-            initial_spectrum[mode, real_col] = real
-            initial_spectrum[mode, imag_col] = imaginary
+            initial_spectrum[:, real_col] = torch.tensor(
+                coefficients.real, dtype=torch.float32
+            )
+            initial_spectrum[:, imag_col] = torch.tensor(
+                coefficients.imag, dtype=torch.float32
+            )
 
         self.spectral_coefficients = nn.Parameter(initial_spectrum)
 
@@ -351,6 +383,9 @@ def save_log(device, data_total, active_modes, epoch, loss, r2_1, r2_2, runtime)
         f"Thread: {torch.get_num_threads()}",
         f"Data_total: {data_total}",
         f"Active Fourier modes: {active_modes}",
+        f"Max angular frequency: {MAX_ANGULAR_FREQUENCY}",
+        f"Initialization omega max: {INITIALIZATION_OMEGA_MAX}",
+        f"Physics margin fraction: {PHYSICS_MARGIN_FRACTION}",
         f"data_stop: {DATA_STOP}",
         f"data_step: {DATA_STEP}",
         f"m1: {m1}",
@@ -504,23 +539,25 @@ def main():
 
     frequencies = 2.0 * np.pi * np.fft.rfftfreq(n_time, d=dt)
     total_modes = len(frequencies)
-    active_modes = min(MAX_PHYSICS_MODES, total_modes)
+    # High-frequency Fourier coefficients are dangerous here because the
+    # second derivative multiplies them by omega^2.  Keep only the physically
+    # relevant band instead of hundreds of unnecessary bins.
+    active_modes = int(np.searchsorted(
+        frequencies, MAX_ANGULAR_FREQUENCY, side="right"
+    ))
+    active_modes = max(2, min(active_modes, total_modes))
 
     data_stop = min(DATA_STOP, n_time)
     data_indices = np.arange(0, data_stop, DATA_STEP)
 
-    # Initialize Theta1 and Theta2 independently from sparse measurements.
-    initial_1 = estimate_initial_mode(
+    # Multimode ridge initialization from sparse measurements.
+    initial_1 = estimate_initial_spectrum(
         t[data_indices], theta1_ref[data_indices], frequencies[:active_modes]
     )
-    initial_2 = estimate_initial_mode(
+    initial_2 = estimate_initial_spectrum(
         t[data_indices], theta2_ref[data_indices], frequencies[:active_modes]
     )
 
-    print(
-        f"Initial spectral modes: theta1={initial_1[1]}, "
-        f"theta2={initial_2[1]}"
-    )
     print(
         f"Active Fourier modes: {active_modes}/{total_modes} "
         f"(omega_max={frequencies[active_modes - 1]:.3f} rad/s)"
@@ -597,8 +634,23 @@ def main():
         data_loss = torch.mean((theta[index_tensor] - theta_data) ** 2)
 
         # 2) Explicit nonlinear double-pendulum physics loss.
+        # FFT differentiation implicitly makes the finite record periodic.
+        # The real trajectory is generally not periodic over exactly 30 s, so
+        # endpoint wrap-around contaminates the residual.  Excluding a narrow
+        # boundary region removes most of that artifact.
         f1, f2 = explicit_physics_residuals(theta, velocity, acceleration)
-        physics_loss = torch.mean(f1**2 + f2**2)
+        margin = max(1, int(PHYSICS_MARGIN_FRACTION * n_time))
+        if 2 * margin < n_time:
+            f1_physics = f1[margin:-margin]
+            f2_physics = f2[margin:-margin]
+        else:
+            f1_physics, f2_physics = f1, f2
+
+        acceleration_scale = g / min(l1, l2)
+        physics_loss = torch.mean(
+            (f1_physics / acceleration_scale) ** 2
+            + (f2_physics / acceleration_scale) ** 2
+        )
 
         # 3) Initial angle + angular-velocity loss.
         initial_loss = torch.mean((theta[0] - theta0_target) ** 2) + torch.mean(
@@ -609,7 +661,8 @@ def main():
         _, _, _, energy = mechanics(
             theta[:, 0], theta[:, 1], velocity[:, 0], velocity[:, 1]
         )
-        energy_loss = torch.mean((energy - energy0_target) ** 2)
+        energy_scale = torch.clamp(torch.abs(energy0_target), min=1.0)
+        energy_loss = torch.mean(((energy - energy0_target) / energy_scale) ** 2)
 
         total_loss = (
             LAMBDA_DATA * data_loss
@@ -663,10 +716,35 @@ def main():
     r2_2 = coefficient_of_determination(theta2_ref, theta_final[:, 1])
     r2_mean = 0.5 * (r2_1 + r2_2)
 
+    # Report interpolation and extrapolation separately.  A global R^2 hides
+    # the fact that the present model fits the observed interval much better
+    # than the unseen tail.
+    train_slice = slice(0, data_stop)
+    r2_train_1 = coefficient_of_determination(
+        theta1_ref[train_slice], theta_final[train_slice, 0]
+    )
+    r2_train_2 = coefficient_of_determination(
+        theta2_ref[train_slice], theta_final[train_slice, 1]
+    )
+    if data_stop < n_time:
+        test_slice = slice(data_stop, n_time)
+        r2_test_1 = coefficient_of_determination(
+            theta1_ref[test_slice], theta_final[test_slice, 0]
+        )
+        r2_test_2 = coefficient_of_determination(
+            theta2_ref[test_slice], theta_final[test_slice, 1]
+        )
+    else:
+        r2_test_1 = r2_test_2 = float("nan")
+
     runtime = format_time(time.time() - start_time)
-    print(f"\nR^2 theta1: {r2_1:.6f}")
-    print(f"R^2 theta2: {r2_2:.6f}")
-    print(f"R^2 mean:   {r2_mean:.6f}")
+    print(f"\nR^2 theta1 (all):   {r2_1:.6f}")
+    print(f"R^2 theta2 (all):   {r2_2:.6f}")
+    print(f"R^2 mean (all):     {r2_mean:.6f}")
+    print(f"R^2 theta1 (train): {r2_train_1:.6f}")
+    print(f"R^2 theta2 (train): {r2_train_2:.6f}")
+    print(f"R^2 theta1 (extra): {r2_test_1:.6f}")
+    print(f"R^2 theta2 (extra): {r2_test_2:.6f}")
     print(f"Runtime: {runtime}")
 
     save_log(
