@@ -78,7 +78,7 @@ OUTPUT_PREFIX = "tpinn2"
 LOG_FILE = OUTPUT_DIR / "TPINN2.log"
 
 SEED = 0
-EPOCHS = 100000
+EPOCHS = 200000
 SNAPSHOT_EVERY = 1000
 PRINT_EVERY = 100
 PHYSICS_POINTS = 3000
@@ -88,9 +88,7 @@ DATA_STOP = 1000
 DATA_STEP = 10
 
 LEARNING_RATE = 1e-3
-LR_FACTOR = 0.5
-LR_PATIENCE = 1000
-LR_MIN = 1e-6
+WEIGHT_DECAY = 1e-4
 
 LAMBDA_DATA = 100.0
 LAMBDA_PHYSICS = 0.1
@@ -192,6 +190,8 @@ class DoublePendulumPINN(nn.Module):
             nn.Tanh(),
             nn.Linear(64, 64),
             nn.Tanh(),
+            nn.Linear(64, 64),
+            nn.Tanh(),
             nn.Linear(64, 2),
         )
 
@@ -281,10 +281,7 @@ def save_log(device, data_total, epoch, loss, r2_1, r2_2, runtime, lr):
         f"l2: {l2}",
         f"g: {g}",
         f"Initial learning rate: {LEARNING_RATE}",
-        f"Scheduler factor: {LR_FACTOR}",
-        f"Scheduler patience: {LR_PATIENCE}",
-        f"Scheduler min LR: {LR_MIN}",
-        f"Current learning rate: {lr:.6e}",
+        f"Weight decay: {WEIGHT_DECAY}",
         f"Lambda data: {LAMBDA_DATA}",
         f"Lambda physics: {LAMBDA_PHYSICS}",
         f"Lambda initial: {LAMBDA_INITIAL}",
@@ -432,15 +429,7 @@ def main():
     )[:, None]
 
     model = DoublePendulumPINN(time_min, time_max).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer,
-        mode="min",
-        factor=LR_FACTOR,
-        patience=LR_PATIENCE,
-        min_lr=LR_MIN,
-        threshold=1e-4,
-    )
+    optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
 
     history = {
         name: [] for name in ("total", "data", "physics", "initial", "energy")
@@ -494,14 +483,11 @@ def main():
         history["initial"].append(initial_loss.item())
         history["energy"].append(energy_loss.item())
 
-        scheduler.step(total_loss.item())
-        current_lr = optimizer.param_groups[0]["lr"]
-
         if epoch % PRINT_EVERY == 0:
             elapsed = format_time(time.time() - start_time)
             print(
                 f"\rEpoch {epoch:6d} | Loss {total_loss.item():.6e} "
-                f"| LR {current_lr:.2e} | Time {elapsed}",
+                f"| Time {elapsed}",
                 end="",
                 flush=True,
             )
@@ -537,7 +523,7 @@ def main():
         r2_1=r2_1,
         r2_2=r2_2,
         runtime=runtime,
-        lr=optimizer.param_groups[0]["lr"],
+        lr=LEARNING_RATE,
     )
 
     print("Saving figures and animation...")
