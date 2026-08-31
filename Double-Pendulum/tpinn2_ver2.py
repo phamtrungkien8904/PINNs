@@ -78,20 +78,25 @@ OUTPUT_PREFIX = "tpinn2"
 LOG_FILE = OUTPUT_DIR / "TPINN2.log"
 
 SEED = 0
-EPOCHS = 500000
+EPOCHS = 100000
 SNAPSHOT_EVERY = 1000
 PRINT_EVERY = 100
-PHYSICS_POINTS = 2000
-PREDICTION_POINTS = 2000
+PHYSICS_POINTS = 3000
+PREDICTION_POINTS = 3000
 
-DATA_STOP = 3500    
-DATA_STEP = 70
+DATA_STOP = 1000    
+DATA_STEP = 10
 
 LEARNING_RATE = 1e-3
-LAMBDA_DATA = 1e1
-LAMBDA_PHYSICS = 1e0
-LAMBDA_INITIAL = 1e1
-LAMBDA_ENERGY = 1e-3
+LR_FACTOR = 0.5
+LR_PATIENCE = 1000
+LR_MIN = 1e-6
+
+LAMBDA_DATA = 100.0
+LAMBDA_PHYSICS = 0.1
+LAMBDA_INITIAL = 100.0
+LAMBDA_ENERGY = 0.001
+
 GRADIENT_CLIP = 1.0
 GIF_FPS = 30
 
@@ -262,7 +267,7 @@ def explicit_physics_residuals(model, t):
 # -----------------------------------------------------------------------------
 # Output
 # -----------------------------------------------------------------------------
-def save_log(device, data_total, epoch, loss, r2_1, r2_2, runtime):
+def save_log(device, data_total, epoch, loss, r2_1, r2_2, runtime, lr):
     log_lines = [
         "Name: Double Pendulum TPINN",
         f"Using device: {device}",
@@ -275,7 +280,11 @@ def save_log(device, data_total, epoch, loss, r2_1, r2_2, runtime):
         f"l1: {l1}",
         f"l2: {l2}",
         f"g: {g}",
-        f"Learning rate: {LEARNING_RATE}",
+        f"Initial learning rate: {LEARNING_RATE}",
+        f"Scheduler factor: {LR_FACTOR}",
+        f"Scheduler patience: {LR_PATIENCE}",
+        f"Scheduler min LR: {LR_MIN}",
+        f"Current learning rate: {lr:.6e}",
         f"Lambda data: {LAMBDA_DATA}",
         f"Lambda physics: {LAMBDA_PHYSICS}",
         f"Lambda initial: {LAMBDA_INITIAL}",
@@ -373,6 +382,8 @@ def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # device = torch.device("mps" if torch.backends.mps.is_available() else "cpu") # Use MPS if available
     print(f"Using device: {device}")
     if torch.cuda.is_available():
         print(f"GPU: {torch.cuda.get_device_name(0)}")
@@ -381,8 +392,6 @@ def main():
 
     t_ref, theta1_ref, theta2_ref, omega1_ref, omega2_ref = load_data(DATA_FILE)
     time_min, time_max = t_ref.min(), t_ref.max()
-    if time_max <= time_min:
-        raise ValueError("The time range must be greater than zero.")
 
     # Sparse measured angle data, matching the structure of the original tpinn.py.
     data_indices = np.arange(0, min(DATA_STOP, len(t_ref)), DATA_STEP)
@@ -424,6 +433,14 @@ def main():
 
     model = DoublePendulumPINN(time_min, time_max).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode="min",
+        factor=LR_FACTOR,
+        patience=LR_PATIENCE,
+        min_lr=LR_MIN,
+        threshold=1e-4,
+    )
 
     history = {
         name: [] for name in ("total", "data", "physics", "initial", "energy")
@@ -477,11 +494,14 @@ def main():
         history["initial"].append(initial_loss.item())
         history["energy"].append(energy_loss.item())
 
+        scheduler.step(total_loss.item())
+        current_lr = optimizer.param_groups[0]["lr"]
+
         if epoch % PRINT_EVERY == 0:
             elapsed = format_time(time.time() - start_time)
             print(
                 f"\rEpoch {epoch:6d} | Loss {total_loss.item():.6e} "
-                f"| Time {elapsed}",
+                f"| LR {current_lr:.2e} | Time {elapsed}",
                 end="",
                 flush=True,
             )
@@ -517,6 +537,7 @@ def main():
         r2_1=r2_1,
         r2_2=r2_2,
         runtime=runtime,
+        lr=optimizer.param_groups[0]["lr"],
     )
 
     print("Saving figures and animation...")

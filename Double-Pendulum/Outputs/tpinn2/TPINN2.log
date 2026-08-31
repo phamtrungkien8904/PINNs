@@ -1,0 +1,26 @@
+Name: Double Pendulum TPINN
+Using device: cpu
+Thread: 4
+Data_total: 3001
+data_stop: 1000
+data_step: 10
+m1: 1.0
+m2: 1.0
+l1: 1.0
+l2: 1.0
+g: 10.0
+Initial learning rate: 0.1
+Scheduler factor: 0.5
+Scheduler patience: 200
+Scheduler min LR: 0.0001
+Current learning rate: 1.000000e-04
+Lambda data: 10.0
+Lambda physics: 1.0
+Lambda initial: 10.0
+Lambda energy: 0.001
+Epoch: 100000
+Loss: 7.930067e-01
+R2 theta1: 0.033794
+R2 theta2: 0.030385
+R2 mean: 0.032089
+Runtime: 00:09:13
