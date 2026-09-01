@@ -95,7 +95,7 @@ def deriv(y, t, L1, L2, m1, m2):
 
     return theta1dot, theta1dotdot, theta2dot, theta2dotdot
 
-tmax, dt = 30, 0.01
+tmax, dt = 10, 0.01
 t = np.arange(0, tmax + dt, dt)
 y0 = np.array([-np.pi/8, 0, -np.pi/10, 0])
 y = odeint(deriv, y0, t, args=(L1, L2, m1, m2))
