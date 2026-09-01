@@ -184,15 +184,15 @@ class DoublePendulumPINN(nn.Module):
         self.register_buffer("time_max", torch.tensor(float(time_max)))
 
         self.network = nn.Sequential(
-            nn.Linear(1, 64),
+            nn.Linear(1, 512),
             nn.Tanh(),
-            nn.Linear(64, 64),
+            nn.Linear(512, 512),
             nn.Tanh(),
-            nn.Linear(64, 64),
+            nn.Linear(512, 512),
             nn.Tanh(),
-            nn.Linear(64, 64),
+            nn.Linear(512, 512),
             nn.Tanh(),
-            nn.Linear(64, 2),
+            nn.Linear(512, 2),
         )
 
     def forward(self, t):
