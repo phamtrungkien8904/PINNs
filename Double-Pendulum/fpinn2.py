@@ -78,27 +78,28 @@ OUTPUT_PREFIX = "fpinn2"
 LOG_FILE = OUTPUT_DIR / f"FPINN2.log"
 
 SEED = 0
-EPOCHS = 100_000
+EPOCHS = 200_000
 SNAPSHOT_EVERY = 1_000
 PRINT_EVERY = 100
-MAX_PHYSICS_MODES = 512
+MAX_PHYSICS_MODES = 256
 
 # Train the Fourier representation on data/IC first, then introduce physics.
-WARMUP_EPOCHS = 5_000
-PHYSICS_RAMP_EPOCHS = 20_000
+WARMUP_EPOCHS = 20_000
+PHYSICS_RAMP_EPOCHS = 40_000
 
-DATA_STOP = 1000
+DATA_STOP = 500
 DATA_STEP = 10
 
-LEARNING_RATE_NETWORK = 1e-4
-LEARNING_RATE_SPECTRUM = 1e-4
+LEARNING_RATE_NETWORK = 1e-3
+LEARNING_RATE_SPECTRUM = 2e-3
+WEIGHT_DECAY = 2e-4
 
 LAMBDA_DATA = 1e2
-LAMBDA_PHYSICS = 1e-4
-LAMBDA_INITIAL = 1e0
-LAMBDA_ENERGY = 1e-5
+LAMBDA_PHYSICS = 1e-1
+LAMBDA_INITIAL = 2e1
+LAMBDA_ENERGY = 0.0
 
-GRADIENT_CLIP = 1.0
+GRADIENT_CLIP = 0.1
 
 SPECTRUM_XMAX = 20.0
 SPECTRUM_YMAX = None
@@ -111,10 +112,8 @@ l1 = 1.0
 l2 = 1.0
 g = 10.0
 
-
 torch.manual_seed(SEED)
 np.random.seed(SEED)
-
 
 # -----------------------------------------------------------------------------
 # Utilities
@@ -185,13 +184,15 @@ class DoubleFourierPINN(nn.Module):
         # Output columns:
         # [Re Theta1, Im Theta1, Re Theta2, Im Theta2]
         self.network = nn.Sequential(
-            nn.Linear(1, 64),
+            nn.Linear(1, 128),
             nn.Tanh(),
-            nn.Linear(64, 64),
+            nn.Linear(128, 128),
             nn.Tanh(),
-            nn.Linear(64, 64),
+            nn.Linear(128, 128),
             nn.Tanh(),
-            nn.Linear(64, 4),
+            nn.Linear(128, 128),
+            nn.Tanh(),
+            nn.Linear(128, 4),
         )
 
         initial_spectrum = torch.zeros(len(frequencies), 4, dtype=torch.float32)
@@ -558,10 +559,10 @@ def main():
         initial_parameters=(initial_1, initial_2),
     ).to(device)
 
-    optimizer = torch.optim.Adam(
+    optimizer = torch.optim.AdamW(
         [
-            {"params": model.network.parameters(), "lr": LEARNING_RATE_NETWORK},
-            {"params": [model.spectral_coefficients], "lr": LEARNING_RATE_SPECTRUM},
+            {"params": model.network.parameters(), "lr": LEARNING_RATE_NETWORK, "weight_decay": WEIGHT_DECAY},
+            {"params": [model.spectral_coefficients], "lr": LEARNING_RATE_SPECTRUM, "weight_decay": WEIGHT_DECAY},
         ]
     )
 

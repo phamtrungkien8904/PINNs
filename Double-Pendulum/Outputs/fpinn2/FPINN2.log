@@ -1,26 +1,36 @@
-Name: Double Pendulum Fourier PINN
-Using device: cpu
+Name: Double Pendulum Fourier PINN - padded period
+Using device: mps
 Thread: 4
-Data_total: 3001
-Active Fourier modes: 512
-data_stop: 1000
+Data_total: 2002
+Fourier samples: 8008
+Fourier period factor: 4
+Active Fourier modes: 153
+Max angular frequency: 12.0
+Initialization omega max: 5.0
+Initialization ridge: 0.01
+Physics margin fraction: 0.05
+data_stop: 500
 data_step: 10
 m1: 1.0
 m2: 1.0
 l1: 1.0
 l2: 1.0
 g: 10.0
-Learning rate network: 0.0001
-Learning rate spectrum: 0.0001
-Lambda data: 100.0
-Lambda physics: 0.0001
-Lambda initial: 1.0
-Lambda energy: 1e-05
-Warmup epochs: 5000
-Physics ramp epochs: 20000
-Epoch: 100000
-Loss: 6.996471e-02
-R2 theta1: -0.324729
-R2 theta2: -0.310426
-R2 mean: -0.317577
-Runtime: 00:03:24
+Learning rate network: 0.0005
+Learning rate spectrum: 0.0002
+Lambda data: 1000.0
+Lambda physics: 5.0
+Lambda initial: 500.0
+Lambda energy: 0.0
+Warmup epochs: 20000
+Physics ramp epochs: 40000
+Epoch: 200000
+Loss: 1.830307e-03
+R2 theta1 all: 0.807239
+R2 theta2 all: 0.807029
+R2 mean all: 0.807134
+R2 theta1 train: 0.999996
+R2 theta2 train: 0.999998
+R2 theta1 extrapolation: 0.748804
+R2 theta2 extrapolation: 0.744392
+Runtime: 00:31:43

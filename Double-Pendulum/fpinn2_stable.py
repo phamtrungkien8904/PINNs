@@ -75,39 +75,59 @@ plt.rcParams.update(
 DATA_FILE = Path("double_pendulum_data.dat")
 OUTPUT_DIR = Path("./Outputs/fpinn2")
 OUTPUT_PREFIX = "fpinn2"
-LOG_FILE = OUTPUT_DIR / f"FPINN2.log"
+LOG_FILE = OUTPUT_DIR / f"{OUTPUT_PREFIX}.log"
 
 SEED = 0
-EPOCHS = 100_000
+EPOCHS = 200_000
 SNAPSHOT_EVERY = 1_000
 PRINT_EVERY = 100
-MAX_ANGULAR_FREQUENCY = 20.0
-INITIALIZATION_OMEGA_MAX = 12.0
-INITIALIZATION_RIDGE = 1e-3
-PHYSICS_MARGIN_FRACTION = 0.03
 
-# Train the Fourier representation on data/IC first, then introduce physics.
-WARMUP_EPOCHS = 10_000
-PHYSICS_RAMP_EPOCHS = 30_000
+# ------------------------------------------------------------------
+# Fourier-domain settings
+#
+# IMPORTANT:
+# The physical trajectory is only evaluated over its real time interval,
+# but the Fourier representation is built on a longer padded period.
+# This greatly reduces the artificial condition theta(0) = theta(T_phys).
+# ------------------------------------------------------------------
+FOURIER_PERIOD_FACTOR = 4
+MAX_ANGULAR_FREQUENCY = 12.0
 
-DATA_STOP = 2000
-DATA_STEP = 20
+INITIALIZATION_OMEGA_MAX = 5.0
+INITIALIZATION_RIDGE = 1e-2
 
-LEARNING_RATE_NETWORK = 1e-4
+# Physics is only evaluated inside the physical time interval.  A small
+# endpoint margin is retained because Fourier differentiation is most
+# sensitive near the boundaries.
+PHYSICS_MARGIN_FRACTION = 0.05
+
+# ------------------------------------------------------------------
+# Training schedule
+# ------------------------------------------------------------------
+WARMUP_EPOCHS = 20_000
+PHYSICS_RAMP_EPOCHS = 40_000
+
+DATA_STOP = 500
+DATA_STEP = 10
+
+# Conservative learning rates are important because spectral coefficients
+# directly affect the full reconstructed trajectory.
+LEARNING_RATE_NETWORK = 5e-4
 LEARNING_RATE_SPECTRUM = 2e-4
 
-LAMBDA_DATA = 5e2
-LAMBDA_PHYSICS = 1e1
-LAMBDA_INITIAL = 1e2
-LAMBDA_ENERGY = 1.0
+# Weighted losses
+LAMBDA_DATA = 1e3
+LAMBDA_PHYSICS = 5.0
+LAMBDA_INITIAL = 5e2
+LAMBDA_ENERGY = 0.0
 
-GRADIENT_CLIP = 100.0
+GRADIENT_CLIP = 10.0
 
-SPECTRUM_XMAX = 20.0
+SPECTRUM_XMAX = 12.0
 SPECTRUM_YMAX = None
 GIF_FPS = 30
 
-# Double-pendulum parameters: same convention as tpinn2_ver2.py.
+# Double-pendulum parameters
 m1 = 1.0
 m2 = 1.0
 l1 = 1.0
@@ -135,9 +155,6 @@ def load_data(path):
         t, theta1, theta2
     or
         t, theta1, theta2, omega1, omega2
-
-    Angular velocities are only needed as targets for the initial condition.
-    If they are absent, they are estimated from the numerical trajectory.
     """
     data = np.loadtxt(path, skiprows=1)
 
@@ -147,6 +164,9 @@ def load_data(path):
 
     dt_all = np.diff(t)
     dt = float(np.mean(dt_all))
+
+    if not np.allclose(dt_all, dt, rtol=1e-5, atol=1e-8):
+        raise ValueError("Input time grid must be uniformly sampled.")
 
     if data.shape[1] >= 5:
         omega1 = data[:, 3]
@@ -161,41 +181,50 @@ def load_data(path):
 def coefficient_of_determination(reference, prediction):
     total = np.sum((reference - np.mean(reference)) ** 2)
     residual = np.sum((reference - prediction) ** 2)
+    if total <= 1e-16:
+        return float("nan")
     return 1.0 - residual / total
 
 
 def estimate_initial_spectrum(t_data, theta_data, frequencies):
-    """Ridge-fit several Fourier modes to the sparse measurements.
+    """Ridge-fit a small set of low-frequency Fourier modes.
 
-    The old code initialized each angle with only one sinusoid.  A double
-    pendulum clearly contains more than one dominant frequency, so a small
-    multimode initialization gives Adam a much better starting point.
+    We deliberately keep INITIALIZATION_OMEGA_MAX low.  With sparse data,
+    trying to initialize too many Fourier coefficients makes the ridge
+    regression underdetermined and noisy.
     """
     frequencies = np.asarray(frequencies)
     use = frequencies <= INITIALIZATION_OMEGA_MAX
     used_frequencies = frequencies[use]
 
     columns = [np.ones_like(t_data)]
+
     for w in used_frequencies[1:]:
         columns.append(np.cos(w * t_data))
         columns.append(np.sin(w * t_data))
+
     design = np.column_stack(columns)
 
-    # Ridge regression is stable even when the sparse-data design is close to
-    # square or mildly underdetermined.  Do not penalize the DC coefficient.
     gram = design.T @ design
     penalty = INITIALIZATION_RIDGE * np.eye(gram.shape[0])
     penalty[0, 0] = 0.0
-    beta = np.linalg.solve(gram + penalty, design.T @ theta_data)
+
+    beta = np.linalg.solve(
+        gram + penalty,
+        design.T @ theta_data,
+    )
 
     spectrum = np.zeros(len(frequencies), dtype=np.complex128)
     spectrum[0] = beta[0]
+
     j = 1
     for k in range(1, len(used_frequencies)):
         cosine = beta[j]
         sine = beta[j + 1]
+
         spectrum[k] = cosine / 2.0 - 1j * sine / 2.0
         j += 2
+
     return spectrum
 
 
@@ -203,15 +232,18 @@ def estimate_initial_spectrum(t_data, theta_data, frequencies):
 # Fourier neural network
 # -----------------------------------------------------------------------------
 class DoubleFourierPINN(nn.Module):
-    """Map angular frequency -> complex spectra [Theta1(omega), Theta2(omega)]."""
+    """Map angular frequency -> complex spectra [Theta1, Theta2].
 
-    def __init__(self, frequencies, n_time, initial_parameters):
+    The directly trainable spectral coefficients do most of the detailed
+    fitting, while the MLP adds a smooth frequency-dependent correction.
+    """
+
+    def __init__(self, frequencies, n_fourier, initial_parameters):
         super().__init__()
-        self.register_buffer("frequencies", frequencies)
-        self.n_time = n_time
 
-        # Output columns:
-        # [Re Theta1, Im Theta1, Re Theta2, Im Theta2]
+        self.register_buffer("frequencies", frequencies)
+        self.n_fourier = n_fourier
+
         self.network = nn.Sequential(
             nn.Linear(1, 64),
             nn.Tanh(),
@@ -222,51 +254,78 @@ class DoubleFourierPINN(nn.Module):
             nn.Linear(64, 4),
         )
 
-        initial_spectrum = torch.zeros(len(frequencies), 4, dtype=torch.float32)
+        initial_spectrum = torch.zeros(
+            len(frequencies),
+            4,
+            dtype=torch.float32,
+        )
 
         for angle_index, coefficients in enumerate(initial_parameters):
             coefficients = np.asarray(coefficients)
+
             real_col = 2 * angle_index
             imag_col = real_col + 1
+
             initial_spectrum[:, real_col] = torch.tensor(
-                coefficients.real, dtype=torch.float32
+                coefficients.real,
+                dtype=torch.float32,
             )
             initial_spectrum[:, imag_col] = torch.tensor(
-                coefficients.imag, dtype=torch.float32
+                coefficients.imag,
+                dtype=torch.float32,
             )
 
         self.spectral_coefficients = nn.Parameter(initial_spectrum)
 
-        # Start from the sparse spectral estimate. The MLP learns a smooth
-        # frequency-dependent correction while each Fourier bin remains trainable.
+        # Start exactly from the ridge estimate.
         nn.init.zeros_(self.network[-1].weight)
         nn.init.zeros_(self.network[-1].bias)
+
         self.network_scale = 1e-2
 
     def forward(self, omega):
         omega_max = torch.clamp(self.frequencies[-1], min=1e-12)
         omega_scaled = 2.0 * omega / omega_max - 1.0
-        output = self.spectral_coefficients + self.network_scale * self.network(
-            omega_scaled
+
+        correction = self.network_scale * self.network(omega_scaled)
+        output = self.spectral_coefficients + correction
+
+        real = torch.stack(
+            (output[:, 0], output[:, 2]),
+            dim=1,
+        )
+        imag = torch.stack(
+            (output[:, 1], output[:, 3]),
+            dim=1,
         )
 
-        real = torch.stack((output[:, 0], output[:, 2]), dim=1)
-        imag = torch.stack((output[:, 1], output[:, 3]), dim=1)
-
-        # DC must be real. Nyquist is also real if it is part of the active set.
-        imaginary_mask = torch.ones(len(output), device=output.device, dtype=output.dtype)
+        # DC coefficient must be real.
+        imaginary_mask = torch.ones(
+            len(output),
+            device=output.device,
+            dtype=output.dtype,
+        )
         imaginary_mask[0] = 0.0
-        if self.n_time % 2 == 0:
-            total_rfft_modes = self.n_time // 2 + 1
-            if len(self.frequencies) == total_rfft_modes:
-                imaginary_mask[-1] = 0.0
 
-        return torch.complex(real, imag * imaginary_mask[:, None])
+        return torch.complex(
+            real,
+            imag * imaginary_mask[:, None],
+        )
 
 
-def reconstruct(model, omega_input, total_modes, n_time):
-    """Return normalized spectra and reconstructed [theta1(t), theta2(t)]."""
-    theta_active = model(omega_input)  # [active_modes, 2]
+# -----------------------------------------------------------------------------
+# Fourier reconstruction
+# -----------------------------------------------------------------------------
+def reconstruct(
+    model,
+    omega_input,
+    total_modes,
+    n_fourier,
+    n_physical,
+):
+    """Reconstruct padded periodic trajectory and return physical interval."""
+
+    theta_active = model(omega_input)
 
     theta_fourier = torch.cat(
         (
@@ -281,58 +340,85 @@ def reconstruct(model, omega_input, total_modes, n_time):
         dim=0,
     )
 
-    theta_time = torch.fft.irfft(n_time * theta_fourier, n=n_time, dim=0)
-    return theta_fourier, theta_time
+    # Padded Fourier-period signal.
+    theta_extended = torch.fft.irfft(
+        n_fourier * theta_fourier,
+        n=n_fourier,
+        dim=0,
+    )
+
+    # Only the real physical time interval participates in data/physics losses.
+    theta_physical = theta_extended[:n_physical]
+
+    return theta_fourier, theta_extended, theta_physical
 
 
-def spectral_derivatives(theta_fourier, omega, n_time):
-    """Compute angular velocity and acceleration directly in Fourier space.
+def spectral_derivatives(
+    theta_fourier,
+    omega,
+    n_fourier,
+    n_physical,
+):
+    """Compute velocity and acceleration by exact spectral differentiation."""
 
-    d/dt Theta  -> i*omega*Theta
-    d2/dt2 Theta -> -omega^2*Theta
-    """
     omega_column = omega[:, None]
+
     velocity_fourier = 1j * omega_column * theta_fourier
     acceleration_fourier = -(omega_column**2) * theta_fourier
 
-    velocity = torch.fft.irfft(n_time * velocity_fourier, n=n_time, dim=0)
-    acceleration = torch.fft.irfft(n_time * acceleration_fourier, n=n_time, dim=0)
+    velocity_extended = torch.fft.irfft(
+        n_fourier * velocity_fourier,
+        n=n_fourier,
+        dim=0,
+    )
+
+    acceleration_extended = torch.fft.irfft(
+        n_fourier * acceleration_fourier,
+        n=n_fourier,
+        dim=0,
+    )
+
+    velocity = velocity_extended[:n_physical]
+    acceleration = acceleration_extended[:n_physical]
+
     return velocity, acceleration
 
 
 # -----------------------------------------------------------------------------
-# Double-pendulum mechanics and explicit physics residual
+# Double-pendulum mechanics
 # -----------------------------------------------------------------------------
 def mechanics(theta1, theta2, omega1, omega2):
-    """Return T, V, L and E=T+V using the same coordinates as tpinn2."""
     y1 = -l1 * torch.cos(theta1)
     y2 = y1 - l2 * torch.cos(theta2)
 
     vx1 = l1 * torch.cos(theta1) * omega1
     vy1 = l1 * torch.sin(theta1) * omega1
+
     vx2 = vx1 + l2 * torch.cos(theta2) * omega2
     vy2 = vy1 + l2 * torch.sin(theta2) * omega2
 
-    kinetic = 0.5 * m1 * (vx1**2 + vy1**2) + 0.5 * m2 * (
-        vx2**2 + vy2**2
+    kinetic = (
+        0.5 * m1 * (vx1**2 + vy1**2)
+        + 0.5 * m2 * (vx2**2 + vy2**2)
     )
+
     potential = m1 * g * y1 + m2 * g * y2
+
     lagrangian = kinetic - potential
     energy = kinetic + potential
+
     return kinetic, potential, lagrangian, energy
 
 
 def explicit_physics_residuals(theta, velocity, acceleration):
-    """Explicit double-pendulum residuals f1=f2=0.
+    """Explicit double-pendulum ODE residuals."""
 
-    This uses exactly the explicit equations from tpinn2_ver2.py, but theta,
-    theta_dot and theta_ddot are supplied by the Fourier reconstruction and
-    spectral differentiation.
-    """
     theta1 = theta[:, 0]
     theta2 = theta[:, 1]
+
     omega1 = velocity[:, 0]
     omega2 = velocity[:, 1]
+
     gamma1 = acceleration[:, 0]
     gamma2 = acceleration[:, 1]
 
@@ -344,10 +430,16 @@ def explicit_physics_residuals(theta, velocity, acceleration):
         m2 * g * torch.sin(theta2) * cos_delta
         - m2
         * sin_delta
-        * (l1 * omega1**2 * cos_delta + l2 * omega2**2)
+        * (
+            l1 * omega1**2 * cos_delta
+            + l2 * omega2**2
+        )
         - (m1 + m2) * g * torch.sin(theta1)
     )
-    denom1 = l1 * (m1 + m2 * sin_delta**2)
+
+    denom1 = l1 * (
+        m1 + m2 * sin_delta**2
+    )
 
     numer2 = (
         (m1 + m2)
@@ -356,35 +448,67 @@ def explicit_physics_residuals(theta, velocity, acceleration):
             - g * torch.sin(theta2)
             + g * torch.sin(theta1) * cos_delta
         )
-        + m2 * l2 * omega2**2 * sin_delta * cos_delta
+        + m2
+        * l2
+        * omega2**2
+        * sin_delta
+        * cos_delta
     )
-    denom2 = l2 * (m1 + m2 * sin_delta**2)
+
+    denom2 = l2 * (
+        m1 + m2 * sin_delta**2
+    )
 
     f1 = gamma1 - numer1 / denom1
     f2 = gamma2 - numer2 / denom2
+
     return f1, f2
 
 
 def current_physics_weight(epoch):
-    """Introduce the nonlinear physics residual gradually after warmup."""
+    """Smoothly activate nonlinear physics after data warmup."""
+
     if epoch < WARMUP_EPOCHS:
         return 0.0
-    ramp = min(1.0, (epoch - WARMUP_EPOCHS + 1) / PHYSICS_RAMP_EPOCHS)
+
+    ramp = min(
+        1.0,
+        (epoch - WARMUP_EPOCHS + 1)
+        / PHYSICS_RAMP_EPOCHS,
+    )
+
     return LAMBDA_PHYSICS * ramp
 
 
 # -----------------------------------------------------------------------------
-# Output
+# Output utilities
 # -----------------------------------------------------------------------------
-def save_log(device, data_total, active_modes, epoch, loss, r2_1, r2_2, runtime):
+def save_log(
+    device,
+    data_total,
+    n_fourier,
+    active_modes,
+    epoch,
+    loss,
+    r2_1,
+    r2_2,
+    r2_train_1,
+    r2_train_2,
+    r2_test_1,
+    r2_test_2,
+    runtime,
+):
     log_lines = [
-        "Name: Double Pendulum Fourier PINN",
+        "Name: Double Pendulum Fourier PINN - padded period",
         f"Using device: {device}",
         f"Thread: {torch.get_num_threads()}",
         f"Data_total: {data_total}",
+        f"Fourier samples: {n_fourier}",
+        f"Fourier period factor: {FOURIER_PERIOD_FACTOR}",
         f"Active Fourier modes: {active_modes}",
         f"Max angular frequency: {MAX_ANGULAR_FREQUENCY}",
         f"Initialization omega max: {INITIALIZATION_OMEGA_MAX}",
+        f"Initialization ridge: {INITIALIZATION_RIDGE}",
         f"Physics margin fraction: {PHYSICS_MARGIN_FRACTION}",
         f"data_stop: {DATA_STOP}",
         f"data_step: {DATA_STEP}",
@@ -403,12 +527,20 @@ def save_log(device, data_total, active_modes, epoch, loss, r2_1, r2_2, runtime)
         f"Physics ramp epochs: {PHYSICS_RAMP_EPOCHS}",
         f"Epoch: {epoch}",
         f"Loss: {loss:.6e}",
-        f"R2 theta1: {r2_1:.6f}",
-        f"R2 theta2: {r2_2:.6f}",
-        f"R2 mean: {0.5 * (r2_1 + r2_2):.6f}",
+        f"R2 theta1 all: {r2_1:.6f}",
+        f"R2 theta2 all: {r2_2:.6f}",
+        f"R2 mean all: {0.5 * (r2_1 + r2_2):.6f}",
+        f"R2 theta1 train: {r2_train_1:.6f}",
+        f"R2 theta2 train: {r2_train_2:.6f}",
+        f"R2 theta1 extrapolation: {r2_test_1:.6f}",
+        f"R2 theta2 extrapolation: {r2_test_2:.6f}",
         f"Runtime: {runtime}",
     ]
-    LOG_FILE.write_text("\n".join(log_lines) + "\n", encoding="utf-8")
+
+    LOG_FILE.write_text(
+        "\n".join(log_lines) + "\n",
+        encoding="utf-8",
+    )
 
 
 def save_time_animation(
@@ -420,56 +552,175 @@ def save_time_animation(
     epochs,
 ):
     fig, ax = plt.subplots()
-    ax.plot(t, theta1_reference, color="blue", alpha=0.35, label=r"Numerical $\theta_1$")
-    ax.plot(t, theta2_reference, color="red", alpha=0.35, label=r"Numerical $\theta_2$")
-    ax.plot(t[data_indices], theta1_reference[data_indices], "o", color="blue", label=r"Data $\theta_1$")
-    ax.plot(t[data_indices], theta2_reference[data_indices], "o", color="red", label=r"Data $\theta_2$")
 
-    line1, = ax.plot(t, snapshots[0][:, 0], "--", color="blue", label=r"FPINN $\theta_1$")
-    line2, = ax.plot(t, snapshots[0][:, 1], "--", color="red", label=r"FPINN $\theta_2$")
-    ax.set(xlabel="Time (s)", ylabel="Angle (rad)")
+    ax.plot(
+        t,
+        theta1_reference,
+        color="blue",
+        alpha=0.35,
+        label=r"Numerical $\theta_1$",
+    )
+    ax.plot(
+        t,
+        theta2_reference,
+        color="red",
+        alpha=0.35,
+        label=r"Numerical $\theta_2$",
+    )
+
+    ax.plot(
+        t[data_indices],
+        theta1_reference[data_indices],
+        "o",
+        color="blue",
+        label=r"Data $\theta_1$",
+    )
+    ax.plot(
+        t[data_indices],
+        theta2_reference[data_indices],
+        "o",
+        color="red",
+        label=r"Data $\theta_2$",
+    )
+
+    line1, = ax.plot(
+        t,
+        snapshots[0][:, 0],
+        "--",
+        color="blue",
+        label=r"FPINN $\theta_1$",
+    )
+
+    line2, = ax.plot(
+        t,
+        snapshots[0][:, 1],
+        "--",
+        color="red",
+        label=r"FPINN $\theta_2$",
+    )
+
+    ax.set(
+        xlabel="Time (s)",
+        ylabel="Angle (rad)",
+    )
     ax.legend(ncol=2)
+
     title = ax.set_title("")
 
     def update(frame):
-        line1.set_ydata(snapshots[frame][:, 0])
-        line2.set_ydata(snapshots[frame][:, 1])
-        title.set_text(f"Double Pendulum Fourier PINN - Epoch {epochs[frame]}")
+        line1.set_ydata(
+            snapshots[frame][:, 0]
+        )
+        line2.set_ydata(
+            snapshots[frame][:, 1]
+        )
+
+        title.set_text(
+            f"Double Pendulum Fourier PINN - Epoch {epochs[frame]}"
+        )
+
         return line1, line2, title
 
-    movie = animation.FuncAnimation(fig, update, frames=len(snapshots), blit=True)
+    movie = animation.FuncAnimation(
+        fig,
+        update,
+        frames=len(snapshots),
+        blit=True,
+    )
+
     movie.save(
         OUTPUT_DIR / f"{OUTPUT_PREFIX}_training.gif",
-        writer=animation.PillowWriter(fps=GIF_FPS),
+        writer=animation.PillowWriter(
+            fps=GIF_FPS
+        ),
     )
+
     plt.close(fig)
 
 
-def save_spectrum_animation(frequencies, reference, snapshots, epochs):
+def save_spectrum_animation(
+    frequencies,
+    reference,
+    snapshots,
+    epochs,
+):
     fig, ax = plt.subplots()
-    ax.plot(frequencies, reference[:, 0], color="blue", alpha=0.35, label=r"FFT $|\Theta_1|$")
-    ax.plot(frequencies, reference[:, 1], color="red", alpha=0.35, label=r"FFT $|\Theta_2|$")
 
-    line1, = ax.plot(frequencies, snapshots[0][:, 0], "--", color="blue", label=r"FPINN $|\Theta_1|$")
-    line2, = ax.plot(frequencies, snapshots[0][:, 1], "--", color="red", label=r"FPINN $|\Theta_2|$")
+    ax.plot(
+        frequencies,
+        reference[:, 0],
+        color="blue",
+        alpha=0.35,
+        label=r"FFT $|\Theta_1|$",
+    )
+    ax.plot(
+        frequencies,
+        reference[:, 1],
+        color="red",
+        alpha=0.35,
+        label=r"FFT $|\Theta_2|$",
+    )
 
-    ax.set(xlabel="Angular frequency (rad/s)", ylabel=r"$|\Theta(\omega)|$", xlim=(0, SPECTRUM_XMAX))
+    line1, = ax.plot(
+        frequencies,
+        snapshots[0][:, 0],
+        "--",
+        color="blue",
+        label=r"FPINN $|\Theta_1|$",
+    )
+
+    line2, = ax.plot(
+        frequencies,
+        snapshots[0][:, 1],
+        "--",
+        color="red",
+        label=r"FPINN $|\Theta_2|$",
+    )
+
+    ax.set(
+        xlabel="Angular frequency (rad/s)",
+        ylabel=r"$|\Theta(\omega)|$",
+        xlim=(0, SPECTRUM_XMAX),
+    )
+
     if SPECTRUM_YMAX is not None:
-        ax.set_ylim(0, SPECTRUM_YMAX)
+        ax.set_ylim(
+            0,
+            SPECTRUM_YMAX,
+        )
+
     ax.legend(ncol=2)
+
     title = ax.set_title("")
 
     def update(frame):
-        line1.set_ydata(snapshots[frame][:, 0])
-        line2.set_ydata(snapshots[frame][:, 1])
-        title.set_text(f"Spectrum Evolution - Epoch {epochs[frame]}")
+        line1.set_ydata(
+            snapshots[frame][:, 0]
+        )
+        line2.set_ydata(
+            snapshots[frame][:, 1]
+        )
+
+        title.set_text(
+            f"Spectrum Evolution - Epoch {epochs[frame]}"
+        )
+
         return line1, line2, title
 
-    movie = animation.FuncAnimation(fig, update, frames=len(snapshots), blit=True)
+    movie = animation.FuncAnimation(
+        fig,
+        update,
+        frames=len(snapshots),
+        blit=True,
+    )
+
     movie.save(
         OUTPUT_DIR / f"{OUTPUT_PREFIX}_spectrum_evolution.gif",
-        writer=animation.PillowWriter(fps=GIF_FPS),
+        writer=animation.PillowWriter(
+            fps=GIF_FPS
+        ),
     )
+
     plt.close(fig)
 
 
@@ -484,40 +735,207 @@ def save_figures(
     spectrum_prediction,
     history,
 ):
+    # Time-domain result
     fig, ax = plt.subplots()
-    ax.plot(t, theta1_reference, color="blue", alpha=0.35, label=r"Numerical $\theta_1$")
-    ax.plot(t, theta2_reference, color="red", alpha=0.35, label=r"Numerical $\theta_2$")
-    ax.plot(t[data_indices], theta1_reference[data_indices], "o", color="blue", label=r"Data $\theta_1$")
-    ax.plot(t[data_indices], theta2_reference[data_indices], "o", color="red", label=r"Data $\theta_2$")
-    ax.plot(t, theta_prediction[:, 0], "--", color="blue", label=r"FPINN $\theta_1$")
-    ax.plot(t, theta_prediction[:, 1], "--", color="red", label=r"FPINN $\theta_2$")
-    ax.set(xlabel="Time (s)", ylabel="Angle (rad)", title="Double Pendulum Fourier PINN")
+
+    ax.plot(
+        t,
+        theta1_reference,
+        color="blue",
+        alpha=0.35,
+        label=r"Numerical $\theta_1$",
+    )
+    ax.plot(
+        t,
+        theta2_reference,
+        color="red",
+        alpha=0.35,
+        label=r"Numerical $\theta_2$",
+    )
+
+    ax.plot(
+        t[data_indices],
+        theta1_reference[data_indices],
+        "o",
+        color="blue",
+        label=r"Data $\theta_1$",
+    )
+    ax.plot(
+        t[data_indices],
+        theta2_reference[data_indices],
+        "o",
+        color="red",
+        label=r"Data $\theta_2$",
+    )
+
+    ax.plot(
+        t,
+        theta_prediction[:, 0],
+        "--",
+        color="blue",
+        label=r"FPINN $\theta_1$",
+    )
+    ax.plot(
+        t,
+        theta_prediction[:, 1],
+        "--",
+        color="red",
+        label=r"FPINN $\theta_2$",
+    )
+
+    ax.set(
+        xlabel="Time (s)",
+        ylabel="Angle (rad)",
+        title="Double Pendulum Fourier PINN",
+    )
+
     ax.legend(ncol=2)
-    fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_results.png", dpi=600)
+
+    fig.savefig(
+        OUTPUT_DIR / f"{OUTPUT_PREFIX}_results.png",
+        dpi=600,
+    )
     plt.close(fig)
 
+    # Spectrum
     fig, ax = plt.subplots()
-    ax.plot(frequencies, spectrum_reference[:, 0] + 1e-12, color="blue", alpha=0.35, label=r"FFT $|\Theta_1|$")
-    ax.plot(frequencies, spectrum_reference[:, 1] + 1e-12, color="red", alpha=0.35, label=r"FFT $|\Theta_2|$")
-    ax.plot(frequencies, spectrum_prediction[:, 0] + 1e-12, "--", color="blue", label=r"FPINN $|\Theta_1|$")
-    ax.plot(frequencies, spectrum_prediction[:, 1] + 1e-12, "--", color="red", label=r"FPINN $|\Theta_2|$")
-    ax.set(xlabel="Angular frequency (rad/s)", ylabel=r"$|\Theta(\omega)|$", xlim=(0, SPECTRUM_XMAX))
+
+    ax.plot(
+        frequencies,
+        spectrum_reference[:, 0] + 1e-12,
+        color="blue",
+        alpha=0.35,
+        label=r"FFT $|\Theta_1|$",
+    )
+    ax.plot(
+        frequencies,
+        spectrum_reference[:, 1] + 1e-12,
+        color="red",
+        alpha=0.35,
+        label=r"FFT $|\Theta_2|$",
+    )
+
+    ax.plot(
+        frequencies,
+        spectrum_prediction[:, 0] + 1e-12,
+        "--",
+        color="blue",
+        label=r"FPINN $|\Theta_1|$",
+    )
+    ax.plot(
+        frequencies,
+        spectrum_prediction[:, 1] + 1e-12,
+        "--",
+        color="red",
+        label=r"FPINN $|\Theta_2|$",
+    )
+
+    ax.set(
+        xlabel="Angular frequency (rad/s)",
+        ylabel=r"$|\Theta(\omega)|$",
+        xlim=(0, SPECTRUM_XMAX),
+    )
+
     if SPECTRUM_YMAX is not None:
-        ax.set_ylim(0, SPECTRUM_YMAX)
+        ax.set_ylim(
+            0,
+            SPECTRUM_YMAX,
+        )
+
     ax.legend(ncol=2)
-    fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_spectrum.png", dpi=600)
+
+    fig.savefig(
+        OUTPUT_DIR / f"{OUTPUT_PREFIX}_spectrum.png",
+        dpi=600,
+    )
     plt.close(fig)
 
-    epoch_axis = np.arange(len(history["total"]))
+    # Raw losses
+    epoch_axis = np.arange(
+        len(history["total"])
+    )
+
     fig, ax = plt.subplots()
-    ax.semilogy(epoch_axis, history["total"], color="black", label="Total Loss")
-    ax.semilogy(epoch_axis, history["data"], color="blue", label="Data Loss")
-    ax.semilogy(epoch_axis, history["physics"], color="red", label="Physics Loss")
-    ax.semilogy(epoch_axis, history["initial"], color="green", label="Initial Condition Loss")
-    ax.semilogy(epoch_axis, history["energy"], color="purple", label="Energy Loss")
-    ax.set(xlabel="Epochs", ylabel="Loss", title="Loss Convergence")
+
+    ax.semilogy(
+        epoch_axis,
+        np.maximum(history["total"], 1e-20),
+        color="black",
+        label="Total Loss",
+    )
+    ax.semilogy(
+        epoch_axis,
+        np.maximum(history["data"], 1e-20),
+        color="blue",
+        label="Data Loss",
+    )
+    ax.semilogy(
+        epoch_axis,
+        np.maximum(history["physics"], 1e-20),
+        color="red",
+        label="Physics Loss",
+    )
+    ax.semilogy(
+        epoch_axis,
+        np.maximum(history["initial"], 1e-20),
+        color="green",
+        label="Initial Condition Loss",
+    )
+    ax.semilogy(
+        epoch_axis,
+        np.maximum(history["energy"], 1e-20),
+        color="purple",
+        label="Energy Loss",
+    )
+
+    ax.set(
+        xlabel="Epochs",
+        ylabel="Loss",
+        title="Raw Loss Convergence",
+    )
     ax.legend()
-    fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_loss.png", dpi=600)
+
+    fig.savefig(
+        OUTPUT_DIR / f"{OUTPUT_PREFIX}_loss.png",
+        dpi=600,
+    )
+    plt.close(fig)
+
+    # Weighted loss contributions
+    fig, ax = plt.subplots()
+
+    ax.semilogy(
+        epoch_axis,
+        np.maximum(history["weighted_data"], 1e-20),
+        label="Weighted Data",
+    )
+    ax.semilogy(
+        epoch_axis,
+        np.maximum(history["weighted_physics"], 1e-20),
+        label="Weighted Physics",
+    )
+    ax.semilogy(
+        epoch_axis,
+        np.maximum(history["weighted_initial"], 1e-20),
+        label="Weighted Initial",
+    )
+    ax.semilogy(
+        epoch_axis,
+        np.maximum(history["weighted_energy"], 1e-20),
+        label="Weighted Energy",
+    )
+
+    ax.set(
+        xlabel="Epochs",
+        ylabel="Weighted contribution",
+        title="Weighted Loss Contributions",
+    )
+    ax.legend()
+
+    fig.savefig(
+        OUTPUT_DIR / f"{OUTPUT_PREFIX}_weighted_loss.png",
+        dpi=600,
+    )
     plt.close(fig)
 
 
@@ -525,60 +943,172 @@ def save_figures(
 # Main training loop
 # -----------------------------------------------------------------------------
 def main():
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    OUTPUT_DIR.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device(
+        "cuda"
+        if torch.cuda.is_available()
+        else "mps"
+        if torch.backends.mps.is_available()
+        else "cpu"
+    )
+
     print(f"Using device: {device}")
-    if torch.cuda.is_available():
-        print(f"GPU: {torch.cuda.get_device_name(0)}")
+
+    if device.type == "cuda":
+        print(
+            f"GPU: {torch.cuda.get_device_name(0)}"
+        )
+    elif device.type == "mps":
+        print("GPU: Apple Metal Performance Shaders")
     else:
-        print(f"CPU: {torch.get_num_threads()} threads")
+        print(
+            f"CPU: {torch.get_num_threads()} threads"
+        )
 
-    t, theta1_ref, theta2_ref, omega1_ref, omega2_ref, dt = load_data(DATA_FILE)
-    n_time = len(t)
+    (
+        t,
+        theta1_ref,
+        theta2_ref,
+        omega1_ref,
+        omega2_ref,
+        dt,
+    ) = load_data(DATA_FILE)
 
-    frequencies = 2.0 * np.pi * np.fft.rfftfreq(n_time, d=dt)
+    n_physical = len(t)
+
+    # Longer Fourier period.
+    n_fourier = FOURIER_PERIOD_FACTOR * n_physical
+
+    frequencies = (
+        2.0
+        * np.pi
+        * np.fft.rfftfreq(
+            n_fourier,
+            d=dt,
+        )
+    )
+
     total_modes = len(frequencies)
-    # High-frequency Fourier coefficients are dangerous here because the
-    # second derivative multiplies them by omega^2.  Keep only the physically
-    # relevant band instead of hundreds of unnecessary bins.
-    active_modes = int(np.searchsorted(
-        frequencies, MAX_ANGULAR_FREQUENCY, side="right"
-    ))
-    active_modes = max(2, min(active_modes, total_modes))
 
-    data_stop = min(DATA_STOP, n_time)
-    data_indices = np.arange(0, data_stop, DATA_STEP)
+    active_modes = int(
+        np.searchsorted(
+            frequencies,
+            MAX_ANGULAR_FREQUENCY,
+            side="right",
+        )
+    )
 
-    # Multimode ridge initialization from sparse measurements.
+    active_modes = max(
+        2,
+        min(
+            active_modes,
+            total_modes,
+        ),
+    )
+
+    data_stop = min(
+        DATA_STOP,
+        n_physical,
+    )
+
+    data_indices = np.arange(
+        0,
+        data_stop,
+        DATA_STEP,
+    )
+
+    if len(data_indices) < 2:
+        raise ValueError(
+            "Too few training data points. "
+            "Increase DATA_STOP or reduce DATA_STEP."
+        )
+
+    # Initial Fourier coefficients from sparse observed data.
     initial_1 = estimate_initial_spectrum(
-        t[data_indices], theta1_ref[data_indices], frequencies[:active_modes]
-    )
-    initial_2 = estimate_initial_spectrum(
-        t[data_indices], theta2_ref[data_indices], frequencies[:active_modes]
+        t[data_indices],
+        theta1_ref[data_indices],
+        frequencies[:active_modes],
     )
 
+    initial_2 = estimate_initial_spectrum(
+        t[data_indices],
+        theta2_ref[data_indices],
+        frequencies[:active_modes],
+    )
+
+    physical_duration = (
+        t[-1] - t[0] + dt
+    )
+    fourier_duration = (
+        n_fourier * dt
+    )
+
+    print(
+        f"Physical samples: {n_physical}"
+    )
+    print(
+        f"Fourier samples: {n_fourier}"
+    )
+    print(
+        f"Physical duration: {physical_duration:.3f} s"
+    )
+    print(
+        f"Fourier period: {fourier_duration:.3f} s"
+    )
+    print(
+        f"Training data points: {len(data_indices)}"
+    )
     print(
         f"Active Fourier modes: {active_modes}/{total_modes} "
         f"(omega_max={frequencies[active_modes - 1]:.3f} rad/s)"
     )
 
-    omega = torch.tensor(frequencies, dtype=torch.float32, device=device)
+    omega = torch.tensor(
+        frequencies,
+        dtype=torch.float32,
+        device=device,
+    )
+
     omega_active = omega[:active_modes]
     omega_input = omega_active[:, None]
 
-    index_tensor = torch.tensor(data_indices, dtype=torch.long, device=device)
+    index_tensor = torch.tensor(
+        data_indices,
+        dtype=torch.long,
+        device=device,
+    )
+
     theta_data = torch.tensor(
-        np.column_stack((theta1_ref[data_indices], theta2_ref[data_indices])),
+        np.column_stack(
+            (
+                theta1_ref[data_indices],
+                theta2_ref[data_indices],
+            )
+        ),
         dtype=torch.float32,
         device=device,
     )
 
     theta0_target = torch.tensor(
-        [theta1_ref[0], theta2_ref[0]], dtype=torch.float32, device=device
+        [
+            theta1_ref[0],
+            theta2_ref[0],
+        ],
+        dtype=torch.float32,
+        device=device,
     )
+
     omega0_target = torch.tensor(
-        [omega1_ref[0], omega2_ref[0]], dtype=torch.float32, device=device
+        [
+            omega1_ref[0],
+            omega2_ref[0],
+        ],
+        dtype=torch.float32,
+        device=device,
     )
 
     with torch.no_grad():
@@ -591,174 +1121,496 @@ def main():
 
     model = DoubleFourierPINN(
         omega_active,
-        n_time,
-        initial_parameters=(initial_1, initial_2),
+        n_fourier,
+        initial_parameters=(
+            initial_1,
+            initial_2,
+        ),
     ).to(device)
 
     optimizer = torch.optim.Adam(
         [
-            {"params": model.network.parameters(), "lr": LEARNING_RATE_NETWORK},
-            {"params": [model.spectral_coefficients], "lr": LEARNING_RATE_SPECTRUM},
+            {
+                "params": model.network.parameters(),
+                "lr": LEARNING_RATE_NETWORK,
+            },
+            {
+                "params": [
+                    model.spectral_coefficients
+                ],
+                "lr": LEARNING_RATE_SPECTRUM,
+            },
         ]
     )
 
+    # Mild LR reduction after the nonlinear-physics ramp has largely settled.
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(
+        optimizer,
+        milestones=[
+            60_000,
+            80_000,
+        ],
+        gamma=0.3,
+    )
+
     history = {
-        name: [] for name in ("total", "data", "physics", "initial", "energy")
+        name: []
+        for name in (
+            "total",
+            "data",
+            "physics",
+            "initial",
+            "energy",
+            "weighted_data",
+            "weighted_physics",
+            "weighted_initial",
+            "weighted_energy",
+        )
     }
+
     snapshot_epochs = []
     time_snapshots = []
     spectrum_snapshots = []
 
-    spectrum_plot_mask = frequencies <= SPECTRUM_XMAX
+    spectrum_plot_mask = (
+        frequencies <= SPECTRUM_XMAX
+    )
+
+    # Reference FFT is plotted on the same padded frequency grid.
+    theta1_padded = np.zeros(
+        n_fourier,
+        dtype=np.float64,
+    )
+    theta2_padded = np.zeros(
+        n_fourier,
+        dtype=np.float64,
+    )
+
+    theta1_padded[:n_physical] = theta1_ref
+    theta2_padded[:n_physical] = theta2_ref
+
     spectrum_reference = np.column_stack(
         (
-            np.abs(np.fft.rfft(theta1_ref) / n_time),
-            np.abs(np.fft.rfft(theta2_ref) / n_time),
+            np.abs(
+                np.fft.rfft(theta1_padded)
+                / n_fourier
+            ),
+            np.abs(
+                np.fft.rfft(theta2_padded)
+                / n_fourier
+            ),
         )
     )
 
     start_time = time.time()
 
     for epoch in range(EPOCHS + 1):
-        optimizer.zero_grad(set_to_none=True)
+        optimizer.zero_grad(
+            set_to_none=True
+        )
 
-        # Frequency-domain model -> two reconstructed time-domain angles.
-        spectrum, theta = reconstruct(model, omega_input, total_modes, n_time)
+        # -------------------------------------------------------------
+        # Fourier reconstruction
+        # -------------------------------------------------------------
+        (
+            spectrum,
+            theta_extended,
+            theta,
+        ) = reconstruct(
+            model,
+            omega_input,
+            total_modes,
+            n_fourier,
+            n_physical,
+        )
 
-        # Exact Fourier differentiation of the represented signal.
         velocity, acceleration = spectral_derivatives(
-            spectrum, omega, n_time
+            spectrum,
+            omega,
+            n_fourier,
+            n_physical,
         )
 
-        # 1) Sparse angle data loss.
-        data_loss = torch.mean((theta[index_tensor] - theta_data) ** 2)
+        # -------------------------------------------------------------
+        # 1) Sparse data loss
+        # -------------------------------------------------------------
+        data_loss = torch.mean(
+            (
+                theta[index_tensor]
+                - theta_data
+            ) ** 2
+        )
 
-        # 2) Explicit nonlinear double-pendulum physics loss.
-        # FFT differentiation implicitly makes the finite record periodic.
-        # The real trajectory is generally not periodic over exactly 30 s, so
-        # endpoint wrap-around contaminates the residual.  Excluding a narrow
-        # boundary region removes most of that artifact.
-        f1, f2 = explicit_physics_residuals(theta, velocity, acceleration)
-        margin = max(1, int(PHYSICS_MARGIN_FRACTION * n_time))
-        if 2 * margin < n_time:
-            f1_physics = f1[margin:-margin]
-            f2_physics = f2[margin:-margin]
+        # -------------------------------------------------------------
+        # 2) Explicit nonlinear physics loss
+        # -------------------------------------------------------------
+        f1, f2 = explicit_physics_residuals(
+            theta,
+            velocity,
+            acceleration,
+        )
+
+        margin = max(
+            1,
+            int(
+                PHYSICS_MARGIN_FRACTION
+                * n_physical
+            ),
+        )
+
+        if 2 * margin < n_physical:
+            f1_physics = f1[
+                margin:-margin
+            ]
+            f2_physics = f2[
+                margin:-margin
+            ]
         else:
-            f1_physics, f2_physics = f1, f2
+            f1_physics = f1
+            f2_physics = f2
 
-        acceleration_scale = g / min(l1, l2)
+        # Normalize residual by the natural acceleration scale.
+        acceleration_scale = (
+            g / min(l1, l2)
+        )
+
         physics_loss = torch.mean(
-            (f1_physics / acceleration_scale) ** 2
-            + (f2_physics / acceleration_scale) ** 2
+            (
+                f1_physics
+                / acceleration_scale
+            ) ** 2
+            + (
+                f2_physics
+                / acceleration_scale
+            ) ** 2
         )
 
-        # 3) Initial angle + angular-velocity loss.
-        initial_loss = torch.mean((theta[0] - theta0_target) ** 2) + torch.mean(
-            (velocity[0] - omega0_target) ** 2
+        # -------------------------------------------------------------
+        # 3) Initial condition loss
+        # -------------------------------------------------------------
+        initial_angle_loss = torch.mean(
+            (
+                theta[0]
+                - theta0_target
+            ) ** 2
         )
 
-        # 4) Mechanical energy conservation.
+        initial_velocity_loss = torch.mean(
+            (
+                velocity[0]
+                - omega0_target
+            ) ** 2
+        )
+
+        initial_loss = (
+            initial_angle_loss
+            + initial_velocity_loss
+        )
+
+        # -------------------------------------------------------------
+        # 4) Energy loss
+        # -------------------------------------------------------------
         _, _, _, energy = mechanics(
-            theta[:, 0], theta[:, 1], velocity[:, 0], velocity[:, 1]
+            theta[:, 0],
+            theta[:, 1],
+            velocity[:, 0],
+            velocity[:, 1],
         )
-        energy_scale = torch.clamp(torch.abs(energy0_target), min=1.0)
-        energy_loss = torch.mean(((energy - energy0_target) / energy_scale) ** 2)
+
+        energy_scale = torch.clamp(
+            torch.abs(energy0_target),
+            min=1.0,
+        )
+
+        energy_loss = torch.mean(
+            (
+                (
+                    energy
+                    - energy0_target
+                )
+                / energy_scale
+            ) ** 2
+        )
+
+        physics_weight = current_physics_weight(
+            epoch
+        )
+
+        weighted_data = (
+            LAMBDA_DATA
+            * data_loss
+        )
+        weighted_physics = (
+            physics_weight
+            * physics_loss
+        )
+        weighted_initial = (
+            LAMBDA_INITIAL
+            * initial_loss
+        )
+        weighted_energy = (
+            LAMBDA_ENERGY
+            * energy_loss
+        )
 
         total_loss = (
-            LAMBDA_DATA * data_loss
-            + current_physics_weight(epoch) * physics_loss
-            + LAMBDA_INITIAL * initial_loss
-            + LAMBDA_ENERGY * energy_loss
+            weighted_data
+            + weighted_physics
+            + weighted_initial
+            + weighted_energy
         )
 
+        if not torch.isfinite(total_loss):
+            raise RuntimeError(
+                f"Non-finite loss at epoch {epoch}. "
+                "Reduce learning rates or MAX_ANGULAR_FREQUENCY."
+            )
+
         total_loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=GRADIENT_CLIP)
+
+        torch.nn.utils.clip_grad_norm_(
+            model.parameters(),
+            max_norm=GRADIENT_CLIP,
+        )
+
         optimizer.step()
+        scheduler.step()
 
-        history["total"].append(total_loss.item())
-        history["data"].append(data_loss.item())
-        history["physics"].append(physics_loss.item())
-        history["initial"].append(initial_loss.item())
-        history["energy"].append(energy_loss.item())
+        history["total"].append(
+            total_loss.item()
+        )
+        history["data"].append(
+            data_loss.item()
+        )
+        history["physics"].append(
+            physics_loss.item()
+        )
+        history["initial"].append(
+            initial_loss.item()
+        )
+        history["energy"].append(
+            energy_loss.item()
+        )
+        history["weighted_data"].append(
+            weighted_data.item()
+        )
+        history["weighted_physics"].append(
+            weighted_physics.item()
+        )
+        history["weighted_initial"].append(
+            weighted_initial.item()
+        )
+        history["weighted_energy"].append(
+            weighted_energy.item()
+        )
 
+        # -------------------------------------------------------------
+        # Console diagnostics
+        # -------------------------------------------------------------
         if epoch % PRINT_EVERY == 0:
-            elapsed = format_time(time.time() - start_time)
-            physics_weight = current_physics_weight(epoch)
+            elapsed = format_time(
+                time.time() - start_time
+            )
+
+            current_lrs = [
+                group["lr"]
+                for group in optimizer.param_groups
+            ]
+
             print(
-                f'\rEpoch {epoch:6d} | Loss {total_loss.item():.6e} | Time {elapsed}',
-                end='',
+                f"\rEpoch {epoch:6d} | "
+                f"Total {total_loss.item():.3e} | "
+                f"D {data_loss.item():.2e}"
+                f"[{weighted_data.item():.2e}] | "
+                f"P {physics_loss.item():.2e}"
+                f"[{weighted_physics.item():.2e}] | "
+                f"IC {initial_loss.item():.2e}"
+                f"[{weighted_initial.item():.2e}] | "
+                f"wp={physics_weight:.3f} | "
+                f"lrS={current_lrs[1]:.1e} | "
+                f"Time {elapsed}",
+                end="",
                 flush=True,
             )
 
+        # -------------------------------------------------------------
+        # Snapshots
+        # -------------------------------------------------------------
         if epoch % SNAPSHOT_EVERY == 0:
             model.eval()
+
             with torch.no_grad():
-                spectrum_now, theta_now = reconstruct(
-                    model, omega_input, total_modes, n_time
+                (
+                    spectrum_now,
+                    _,
+                    theta_now,
+                ) = reconstruct(
+                    model,
+                    omega_input,
+                    total_modes,
+                    n_fourier,
+                    n_physical,
                 )
-            snapshot_epochs.append(epoch)
-            time_snapshots.append(theta_now.cpu().numpy().copy())
-            spectrum_snapshots.append(
-                np.abs(spectrum_now.cpu().numpy())[spectrum_plot_mask].copy()
+
+            snapshot_epochs.append(
+                epoch
             )
+
+            time_snapshots.append(
+                theta_now
+                .detach()
+                .cpu()
+                .numpy()
+                .copy()
+            )
+
+            spectrum_snapshots.append(
+                np.abs(
+                    spectrum_now
+                    .detach()
+                    .cpu()
+                    .numpy()
+                )[
+                    spectrum_plot_mask
+                ].copy()
+            )
+
             model.train()
 
+    # -----------------------------------------------------------------
+    # Final prediction
+    # -----------------------------------------------------------------
     model.eval()
+
     with torch.no_grad():
-        spectrum_final, theta_final = reconstruct(
-            model, omega_input, total_modes, n_time
+        (
+            spectrum_final,
+            _,
+            theta_final,
+        ) = reconstruct(
+            model,
+            omega_input,
+            total_modes,
+            n_fourier,
+            n_physical,
         )
 
-    theta_final = theta_final.cpu().numpy()
-    spectrum_final = np.abs(spectrum_final.cpu().numpy())
+    theta_final = (
+        theta_final
+        .detach()
+        .cpu()
+        .numpy()
+    )
 
-    r2_1 = coefficient_of_determination(theta1_ref, theta_final[:, 0])
-    r2_2 = coefficient_of_determination(theta2_ref, theta_final[:, 1])
-    r2_mean = 0.5 * (r2_1 + r2_2)
+    spectrum_final = np.abs(
+        spectrum_final
+        .detach()
+        .cpu()
+        .numpy()
+    )
 
-    # Report interpolation and extrapolation separately.  A global R^2 hides
-    # the fact that the present model fits the observed interval much better
-    # than the unseen tail.
-    train_slice = slice(0, data_stop)
+    # -----------------------------------------------------------------
+    # Metrics
+    # -----------------------------------------------------------------
+    r2_1 = coefficient_of_determination(
+        theta1_ref,
+        theta_final[:, 0],
+    )
+
+    r2_2 = coefficient_of_determination(
+        theta2_ref,
+        theta_final[:, 1],
+    )
+
+    r2_mean = 0.5 * (
+        r2_1 + r2_2
+    )
+
+    train_slice = slice(
+        0,
+        data_stop,
+    )
+
     r2_train_1 = coefficient_of_determination(
-        theta1_ref[train_slice], theta_final[train_slice, 0]
+        theta1_ref[train_slice],
+        theta_final[train_slice, 0],
     )
-    r2_train_2 = coefficient_of_determination(
-        theta2_ref[train_slice], theta_final[train_slice, 1]
-    )
-    if data_stop < n_time:
-        test_slice = slice(data_stop, n_time)
-        r2_test_1 = coefficient_of_determination(
-            theta1_ref[test_slice], theta_final[test_slice, 0]
-        )
-        r2_test_2 = coefficient_of_determination(
-            theta2_ref[test_slice], theta_final[test_slice, 1]
-        )
-    else:
-        r2_test_1 = r2_test_2 = float("nan")
 
-    runtime = format_time(time.time() - start_time)
-    print(f"\nR^2 theta1 (all):   {r2_1:.6f}")
-    print(f"R^2 theta2 (all):   {r2_2:.6f}")
-    print(f"R^2 mean (all):     {r2_mean:.6f}")
-    print(f"R^2 theta1 (train): {r2_train_1:.6f}")
-    print(f"R^2 theta2 (train): {r2_train_2:.6f}")
-    print(f"R^2 theta1 (extra): {r2_test_1:.6f}")
-    print(f"R^2 theta2 (extra): {r2_test_2:.6f}")
-    print(f"Runtime: {runtime}")
+    r2_train_2 = coefficient_of_determination(
+        theta2_ref[train_slice],
+        theta_final[train_slice, 1],
+    )
+
+    if data_stop < n_physical:
+        test_slice = slice(
+            data_stop,
+            n_physical,
+        )
+
+        r2_test_1 = coefficient_of_determination(
+            theta1_ref[test_slice],
+            theta_final[test_slice, 0],
+        )
+
+        r2_test_2 = coefficient_of_determination(
+            theta2_ref[test_slice],
+            theta_final[test_slice, 1],
+        )
+
+    else:
+        r2_test_1 = float("nan")
+        r2_test_2 = float("nan")
+
+    runtime = format_time(
+        time.time() - start_time
+    )
+
+    print()
+    print(
+        f"R^2 theta1 (all):   {r2_1:.6f}"
+    )
+    print(
+        f"R^2 theta2 (all):   {r2_2:.6f}"
+    )
+    print(
+        f"R^2 mean (all):     {r2_mean:.6f}"
+    )
+    print(
+        f"R^2 theta1 (train): {r2_train_1:.6f}"
+    )
+    print(
+        f"R^2 theta2 (train): {r2_train_2:.6f}"
+    )
+    print(
+        f"R^2 theta1 (extra): {r2_test_1:.6f}"
+    )
+    print(
+        f"R^2 theta2 (extra): {r2_test_2:.6f}"
+    )
+    print(
+        f"Runtime: {runtime}"
+    )
 
     save_log(
         device=device,
-        data_total=n_time,
+        data_total=n_physical,
+        n_fourier=n_fourier,
         active_modes=active_modes,
         epoch=epoch,
         loss=total_loss.item(),
         r2_1=r2_1,
         r2_2=r2_2,
+        r2_train_1=r2_train_1,
+        r2_train_2=r2_train_2,
+        r2_test_1=r2_test_1,
+        r2_test_2=r2_test_2,
         runtime=runtime,
     )
 
-    print("Saving figures and animations...")
+    print(
+        "Saving figures and animations..."
+    )
+
     save_time_animation(
         t,
         theta1_ref,
@@ -767,12 +1619,18 @@ def main():
         time_snapshots,
         snapshot_epochs,
     )
+
     save_spectrum_animation(
-        frequencies[spectrum_plot_mask],
-        spectrum_reference[spectrum_plot_mask],
+        frequencies[
+            spectrum_plot_mask
+        ],
+        spectrum_reference[
+            spectrum_plot_mask
+        ],
         spectrum_snapshots,
         snapshot_epochs,
     )
+
     save_figures(
         t,
         theta1_ref,
@@ -784,7 +1642,10 @@ def main():
         spectrum_final,
         history,
     )
-    print("Figures and animations saved successfully.")
+
+    print(
+        "Figures and animations saved successfully."
+    )
 
 
 if __name__ == "__main__":
