@@ -1,4 +1,5 @@
 from pathlib import Path
+import shutil
 import time
 
 import matplotlib
@@ -14,9 +15,10 @@ import torch.nn as nn
 # Plot settings
 # -----------------------------------------------------------------------------
 plt.style.use("classic")
+USE_LATEX = False
 plt.rcParams.update(
     {
-        "text.usetex": True,
+        "text.usetex": USE_LATEX,
         "text.latex.preamble": r"""
         \usepackage[T1]{fontenc}
         \usepackage{lmodern}
@@ -72,37 +74,41 @@ plt.rcParams.update(
 # -----------------------------------------------------------------------------
 # Configuration
 # -----------------------------------------------------------------------------
-DATA_FILE = Path("double_pendulum_data.dat")
-OUTPUT_DIR = Path("./Outputs/fpinn2")
-OUTPUT_PREFIX = "fpinn2"
-LOG_FILE = OUTPUT_DIR / f"FPINN2.log"
+SCRIPT_DIR = Path(__file__).resolve().parent
+DATA_FILE = SCRIPT_DIR / "double_pendulum_data.dat"
+OUTPUT_DIR = SCRIPT_DIR / "Outputs/fpinn2_hpc"
+OUTPUT_PREFIX = "fpinn2_hpc"
+LOG_FILE = OUTPUT_DIR / "FPINN2_HPC.log"
 
 SEED = 0
 EPOCHS = 1_000_000
 SNAPSHOT_EVERY = 1_000
-PRINT_EVERY = 1000
+PRINT_EVERY = 1_000
+HISTORY_EVERY = 1_000
+REQUIRE_CUDA = True
+GPU_INDEX = 0
 
 # The physical 20 s record is only the first quarter of the Fourier period.
 # This removes the false theta(0) == theta(20 s) boundary condition while
 # retaining exact spectral differentiation on the interval of interest.
-FOURIER_PERIOD_FACTOR = 4
+FOURIER_PERIOD_FACTOR = 8
 MAX_ANGULAR_FREQUENCY = 12.0
 INITIALIZATION_RIDGE = 1e-2
 
 # Train the Fourier representation on data/IC first, then introduce physics.
-WARMUP_EPOCHS = 2_000
-PHYSICS_RAMP_EPOCHS = 8_000
+WARMUP_EPOCHS = 10_000
+PHYSICS_RAMP_EPOCHS = 50_000
 
-# Use sparse measurements from the first 10 s and predict the remaining 10 s.
+# Preserve the sparse-data extrapolation experiment from fpinn2.py.
 DATA_STOP = 300
-DATA_STEP = 10
+DATA_STEP = 30
 
 LEARNING_RATE_NETWORK = 1e-4
 LEARNING_RATE_SPECTRUM = 2e-4
-WEIGHT_DECAY = 1e-7
+WEIGHT_DECAY = 1e-6
 
 LAMBDA_DATA = 1e3
-LAMBDA_PHYSICS = 1e1
+LAMBDA_PHYSICS = 2e1
 LAMBDA_INITIAL = 5e2
 LAMBDA_ENERGY = 0.0
 
@@ -111,6 +117,7 @@ GRADIENT_CLIP = 1.0
 SPECTRUM_XMAX = 20.0
 SPECTRUM_YMAX = None
 GIF_FPS = 30
+NETWORK_WIDTH = 512
 
 # Double-pendulum parameters: same convention as tpinn2_ver2.py.
 m1 = 1.0
@@ -194,15 +201,15 @@ class DoubleFourierPINN(nn.Module):
         # Output columns:
         # [Re Theta1, Im Theta1, Re Theta2, Im Theta2]
         self.network = nn.Sequential(
-            nn.Linear(1, 128),
+            nn.Linear(1, NETWORK_WIDTH),
             nn.Tanh(),
-            nn.Linear(128, 128),
+            nn.Linear(NETWORK_WIDTH, NETWORK_WIDTH),
             nn.Tanh(),
-            nn.Linear(128, 128),
+            nn.Linear(NETWORK_WIDTH, NETWORK_WIDTH),
             nn.Tanh(),
-            nn.Linear(128, 128),
+            nn.Linear(NETWORK_WIDTH, NETWORK_WIDTH),
             nn.Tanh(),
-            nn.Linear(128, 4),
+            nn.Linear(NETWORK_WIDTH, 4),
         )
 
         initial_output = torch.zeros(len(frequencies), 4, dtype=torch.float32)
@@ -370,9 +377,14 @@ def save_log(
     runtime,
 ):
     log_lines = [
-        "Name: Double Pendulum Fourier PINN",
+        "Name: Double Pendulum Fourier PINN - A5000 HPC",
         f"Using device: {device}",
+        f"GPU: {torch.cuda.get_device_name(device) if device.type == 'cuda' else 'None'}",
         f"Thread: {torch.get_num_threads()}",
+        f"Epochs: {EPOCHS}",
+        f"History interval: {HISTORY_EVERY}",
+        f"Snapshot interval: {SNAPSHOT_EVERY}",
+        f"Network width: {NETWORK_WIDTH}",
         f"Data_total: {data_total}",
         f"Active Fourier modes: {active_modes}",
         f"Fourier period factor: {FOURIER_PERIOD_FACTOR}",
@@ -502,13 +514,14 @@ def save_figures(
     fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_spectrum.png", dpi=600)
     plt.close(fig)
 
-    epoch_axis = np.arange(len(history["total"]))
+    epoch_axis = np.asarray(history["epoch"])
     fig, ax = plt.subplots()
     ax.semilogy(epoch_axis, history["total"], color="black", label="Total Loss")
     ax.semilogy(epoch_axis, history["data"], color="blue", label="Data Loss")
     ax.semilogy(epoch_axis, history["physics"], color="red", label="Physics Loss")
     ax.semilogy(epoch_axis, history["initial"], color="green", label="Initial Condition Loss")
-    ax.semilogy(epoch_axis, history["energy"], color="purple", label="Energy Loss")
+    if LAMBDA_ENERGY > 0.0:
+        ax.semilogy(epoch_axis, history["energy"], color="purple", label="Energy Loss")
     ax.set(xlabel="Epochs", ylabel="Loss", title="Loss Convergence")
     ax.legend()
     fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_loss.png", dpi=600)
@@ -521,10 +534,28 @@ def save_figures(
 def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if REQUIRE_CUDA and not torch.cuda.is_available():
+        raise RuntimeError(
+            "CUDA is required by fpinn2_hpc.py, but PyTorch cannot see a GPU. "
+            "Check the CUDA PyTorch installation and the HPC GPU allocation."
+        )
+
+    device = torch.device(
+        f"cuda:{GPU_INDEX}" if torch.cuda.is_available() else "cpu"
+    )
+    if device.type == "cuda":
+        torch.cuda.set_device(device)
+        torch.cuda.manual_seed_all(SEED)
+        torch.set_float32_matmul_precision("high")
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+
     print(f"Using device: {device}")
-    if torch.cuda.is_available():
-        print(f"GPU: {torch.cuda.get_device_name(0)}")
+    if device.type == "cuda":
+        properties = torch.cuda.get_device_properties(device)
+        print(f"GPU: {properties.name}")
+        print(f"GPU memory: {properties.total_memory / 2**30:.1f} GiB")
+        print("Precision: float32 with TF32 matrix operations")
     else:
         print(f"CPU: {torch.get_num_threads()} threads")
 
@@ -590,20 +621,38 @@ def main():
         initial_spectrum,
     ).to(device)
 
-    optimizer = torch.optim.AdamW(
-        [
-            {"params": model.network.parameters(), "lr": LEARNING_RATE_NETWORK, "weight_decay": WEIGHT_DECAY},
-            {"params": [model.spectral_coefficients], "lr": LEARNING_RATE_SPECTRUM, "weight_decay": 0.0},
-        ]
-    )
+    parameter_groups = [
+        {
+            "params": model.network.parameters(),
+            "lr": LEARNING_RATE_NETWORK,
+            "weight_decay": WEIGHT_DECAY,
+        },
+        {
+            "params": [model.spectral_coefficients],
+            "lr": LEARNING_RATE_SPECTRUM,
+            "weight_decay": 0.0,
+        },
+    ]
+    try:
+        optimizer = torch.optim.AdamW(
+            parameter_groups,
+            fused=device.type == "cuda",
+        )
+        fused_optimizer = device.type == "cuda"
+    except (TypeError, RuntimeError):
+        optimizer = torch.optim.AdamW(parameter_groups)
+        fused_optimizer = False
+    print(f"Fused AdamW: {fused_optimizer}")
+
     scheduler = torch.optim.lr_scheduler.MultiStepLR(
         optimizer,
-        milestones=[40_000, 70_000, 90_000],
+        milestones=[400_000, 700_000, 900_000],
         gamma=0.3,
     )
 
     history = {
-        name: [] for name in ("total", "data", "physics", "initial", "energy")
+        name: []
+        for name in ("epoch", "total", "data", "physics", "initial", "energy")
     }
     snapshot_epochs = []
     time_snapshots = []
@@ -618,6 +667,8 @@ def main():
         )
     )
 
+    if device.type == "cuda":
+        torch.cuda.synchronize(device)
     start_time = time.time()
 
     for epoch in range(EPOCHS + 1):
@@ -650,10 +701,13 @@ def main():
         )
 
         # 4) Mechanical energy conservation.
-        _, _, _, energy = mechanics(
-            theta[:, 0], theta[:, 1], velocity[:, 0], velocity[:, 1]
-        )
-        energy_loss = torch.mean((energy - energy0_target) ** 2)
+        if LAMBDA_ENERGY > 0.0:
+            _, _, _, energy = mechanics(
+                theta[:, 0], theta[:, 1], velocity[:, 0], velocity[:, 1]
+            )
+            energy_loss = torch.mean((energy - energy0_target) ** 2)
+        else:
+            energy_loss = torch.zeros((), dtype=theta.dtype, device=device)
 
         total_loss = (
             LAMBDA_DATA * data_loss
@@ -667,11 +721,15 @@ def main():
         optimizer.step()
         scheduler.step()
 
-        history["total"].append(total_loss.item())
-        history["data"].append(data_loss.item())
-        history["physics"].append(physics_loss.item())
-        history["initial"].append(initial_loss.item())
-        history["energy"].append(energy_loss.item())
+        # Calling .item() synchronizes CUDA. Record sparsely so the A5000 does
+        # not wait for the CPU after every epoch.
+        if epoch % HISTORY_EVERY == 0:
+            history["epoch"].append(epoch)
+            history["total"].append(total_loss.item())
+            history["data"].append(data_loss.item())
+            history["physics"].append(physics_loss.item())
+            history["initial"].append(initial_loss.item())
+            history["energy"].append(energy_loss.item())
 
         if epoch % PRINT_EVERY == 0:
             elapsed = format_time(time.time() - start_time)
@@ -686,7 +744,7 @@ def main():
         if epoch % SNAPSHOT_EVERY == 0:
             model.eval()
             with torch.no_grad():
-                spectrum_now, theta_now = reconstruct(
+                _, theta_now = reconstruct(
                     model, omega_input, total_modes, n_fourier, n_time
                 )
             snapshot_epochs.append(epoch)
@@ -719,6 +777,8 @@ def main():
         theta2_ref[extrapolation_start:], theta_final[extrapolation_start:, 1]
     )
 
+    if device.type == "cuda":
+        torch.cuda.synchronize(device)
     runtime = format_time(time.time() - start_time)
     print(f"\nR^2 theta1: {r2_1:.6f}")
     print(f"R^2 theta2: {r2_2:.6f}")

@@ -5,7 +5,7 @@ Data_total: 2002
 Active Fourier modes: 153
 Fourier period factor: 4
 Maximum angular frequency: 12.0
-data_stop: 1000
+data_stop: 300
 data_step: 10
 m1: 1.0
 m2: 1.0
@@ -20,12 +20,12 @@ Lambda initial: 500.0
 Lambda energy: 0.0
 Warmup epochs: 2000
 Physics ramp epochs: 8000
-Epoch: 100000
-Loss: 1.272437e-03
-R2 theta1: 0.979649
-R2 theta2: 0.978055
-R2 mean: 0.978852
-R2 theta1 extrapolation: 0.959724
-R2 theta2 extrapolation: 0.957827
-R2 extrapolation mean: 0.958776
-Runtime: 00:02:28
+Epoch: 1000000
+Loss: 8.073320e-04
+R2 theta1: 0.987628
+R2 theta2: 0.987031
+R2 mean: 0.987329
+R2 theta1 extrapolation: 0.985386
+R2 theta2 extrapolation: 0.984432
+R2 extrapolation mean: 0.984909
+Runtime: 01:54:26
