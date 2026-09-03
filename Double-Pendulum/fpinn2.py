@@ -78,28 +78,35 @@ OUTPUT_PREFIX = "fpinn2"
 LOG_FILE = OUTPUT_DIR / f"FPINN2.log"
 
 SEED = 0
-EPOCHS = 50_000
+EPOCHS = 100_000
 SNAPSHOT_EVERY = 1_000
 PRINT_EVERY = 100
-MAX_PHYSICS_MODES = 256
+
+# The physical 20 s record is only the first quarter of the Fourier period.
+# This removes the false theta(0) == theta(20 s) boundary condition while
+# retaining exact spectral differentiation on the interval of interest.
+FOURIER_PERIOD_FACTOR = 4
+MAX_ANGULAR_FREQUENCY = 12.0
+INITIALIZATION_RIDGE = 1e-2
 
 # Train the Fourier representation on data/IC first, then introduce physics.
-WARMUP_EPOCHS = 20_000
-PHYSICS_RAMP_EPOCHS = 40_000
+WARMUP_EPOCHS = 2_000
+PHYSICS_RAMP_EPOCHS = 8_000
 
-DATA_STOP = 500
+# Use sparse measurements from the first 10 s and predict the remaining 10 s.
+DATA_STOP = 1000
 DATA_STEP = 10
 
-LEARNING_RATE_NETWORK = 1e-3
-LEARNING_RATE_SPECTRUM = 2e-3
-WEIGHT_DECAY = 2e-4
+LEARNING_RATE_NETWORK = 1e-4
+LEARNING_RATE_SPECTRUM = 2e-4
+WEIGHT_DECAY = 1e-7
 
-LAMBDA_DATA = 1e2
-LAMBDA_PHYSICS = 1e-1
-LAMBDA_INITIAL = 2e1
+LAMBDA_DATA = 1e3
+LAMBDA_PHYSICS = 1e1
+LAMBDA_INITIAL = 5e2
 LAMBDA_ENERGY = 0.0
 
-GRADIENT_CLIP = 0.1
+GRADIENT_CLIP = 1.0
 
 SPECTRUM_XMAX = 20.0
 SPECTRUM_YMAX = None
@@ -146,28 +153,31 @@ def coefficient_of_determination(reference, prediction):
     return 1.0 - residual / total
 
 
-def estimate_initial_mode(t_data, theta_data, frequencies):
-    """Fit one sinusoidal mode to sparse measurements for initialization."""
-    errors = np.full(len(frequencies), np.inf)
-    coefficients = np.zeros((len(frequencies), 2))
-
-    # DC initialization from the sparse mean.
-    dc = float(np.mean(theta_data))
-
-    for mode, frequency in enumerate(frequencies[1:], start=1):
-        design = np.column_stack(
-            (np.cos(frequency * t_data), np.sin(frequency * t_data))
+def estimate_initial_spectrum(t_data, theta_data, frequencies, ridge):
+    """Fit all active sine/cosine modes jointly to the sparse measurements."""
+    nonzero_frequencies = frequencies[1:]
+    design = np.column_stack(
+        (
+            np.ones(len(t_data)),
+            np.cos(t_data[:, None] * nonzero_frequencies[None, :]),
+            np.sin(t_data[:, None] * nonzero_frequencies[None, :]),
         )
-        coefficient, *_ = np.linalg.lstsq(design, theta_data - dc, rcond=None)
-        coefficients[mode] = coefficient
-        errors[mode] = np.mean((dc + design @ coefficient - theta_data) ** 2)
+    )
+    gram = design.T @ design
+    regularizer = ridge * np.eye(gram.shape[0])
+    regularizer[0, 0] = 0.0
+    coefficients = np.linalg.solve(
+        gram + regularizer,
+        design.T @ theta_data,
+    )
 
-    mode = int(np.argmin(errors))
-    cosine, sine = coefficients[mode]
-
-    # With the normalized rFFT convention used below:
-    # A cos(wt) + B sin(wt) <-> (A/2) - i(B/2) at positive frequency.
-    return dc, mode, cosine / 2.0, -sine / 2.0
+    mode_count = len(nonzero_frequencies)
+    spectrum = np.zeros((len(frequencies), theta_data.shape[1]), dtype=np.complex64)
+    spectrum[0] = coefficients[0]
+    cosine = coefficients[1 : 1 + mode_count]
+    sine = coefficients[1 + mode_count :]
+    spectrum[1:] = 0.5 * (cosine - 1j * sine)
+    return spectrum
 
 
 # -----------------------------------------------------------------------------
@@ -176,10 +186,10 @@ def estimate_initial_mode(t_data, theta_data, frequencies):
 class DoubleFourierPINN(nn.Module):
     """Map angular frequency -> complex spectra [Theta1(omega), Theta2(omega)]."""
 
-    def __init__(self, frequencies, n_time, initial_parameters):
+    def __init__(self, frequencies, n_fourier, initial_spectrum):
         super().__init__()
         self.register_buffer("frequencies", frequencies)
-        self.n_time = n_time
+        self.n_fourier = n_fourier
 
         # Output columns:
         # [Re Theta1, Im Theta1, Re Theta2, Im Theta2]
@@ -195,16 +205,12 @@ class DoubleFourierPINN(nn.Module):
             nn.Linear(128, 4),
         )
 
-        initial_spectrum = torch.zeros(len(frequencies), 4, dtype=torch.float32)
-
-        for angle_index, (dc, mode, real, imaginary) in enumerate(initial_parameters):
-            real_col = 2 * angle_index
-            imag_col = real_col + 1
-            initial_spectrum[0, real_col] = dc
-            initial_spectrum[mode, real_col] = real
-            initial_spectrum[mode, imag_col] = imaginary
-
-        self.spectral_coefficients = nn.Parameter(initial_spectrum)
+        initial_output = torch.zeros(len(frequencies), 4, dtype=torch.float32)
+        initial_output[:, 0] = torch.from_numpy(initial_spectrum[:, 0].real.copy())
+        initial_output[:, 1] = torch.from_numpy(initial_spectrum[:, 0].imag.copy())
+        initial_output[:, 2] = torch.from_numpy(initial_spectrum[:, 1].real.copy())
+        initial_output[:, 3] = torch.from_numpy(initial_spectrum[:, 1].imag.copy())
+        self.spectral_coefficients = nn.Parameter(initial_output)
 
         # Start from the sparse spectral estimate. The MLP learns a smooth
         # frequency-dependent correction while each Fourier bin remains trainable.
@@ -225,15 +231,15 @@ class DoubleFourierPINN(nn.Module):
         # DC must be real. Nyquist is also real if it is part of the active set.
         imaginary_mask = torch.ones(len(output), device=output.device, dtype=output.dtype)
         imaginary_mask[0] = 0.0
-        if self.n_time % 2 == 0:
-            total_rfft_modes = self.n_time // 2 + 1
+        if self.n_fourier % 2 == 0:
+            total_rfft_modes = self.n_fourier // 2 + 1
             if len(self.frequencies) == total_rfft_modes:
                 imaginary_mask[-1] = 0.0
 
         return torch.complex(real, imag * imaginary_mask[:, None])
 
 
-def reconstruct(model, omega_input, total_modes, n_time):
+def reconstruct(model, omega_input, total_modes, n_fourier, n_physical):
     """Return normalized spectra and reconstructed [theta1(t), theta2(t)]."""
     theta_active = model(omega_input)  # [active_modes, 2]
 
@@ -250,11 +256,13 @@ def reconstruct(model, omega_input, total_modes, n_time):
         dim=0,
     )
 
-    theta_time = torch.fft.irfft(n_time * theta_fourier, n=n_time, dim=0)
-    return theta_fourier, theta_time
+    theta_extended = torch.fft.irfft(
+        n_fourier * theta_fourier, n=n_fourier, dim=0
+    )
+    return theta_fourier, theta_extended[:n_physical]
 
 
-def spectral_derivatives(theta_fourier, omega, n_time):
+def spectral_derivatives(theta_fourier, omega, n_fourier, n_physical):
     """Compute angular velocity and acceleration directly in Fourier space.
 
     d/dt Theta  -> i*omega*Theta
@@ -264,9 +272,13 @@ def spectral_derivatives(theta_fourier, omega, n_time):
     velocity_fourier = 1j * omega_column * theta_fourier
     acceleration_fourier = -(omega_column**2) * theta_fourier
 
-    velocity = torch.fft.irfft(n_time * velocity_fourier, n=n_time, dim=0)
-    acceleration = torch.fft.irfft(n_time * acceleration_fourier, n=n_time, dim=0)
-    return velocity, acceleration
+    velocity_extended = torch.fft.irfft(
+        n_fourier * velocity_fourier, n=n_fourier, dim=0
+    )
+    acceleration_extended = torch.fft.irfft(
+        n_fourier * acceleration_fourier, n=n_fourier, dim=0
+    )
+    return velocity_extended[:n_physical], acceleration_extended[:n_physical]
 
 
 # -----------------------------------------------------------------------------
@@ -339,19 +351,32 @@ def current_physics_weight(epoch):
     if epoch < WARMUP_EPOCHS:
         return 0.0
     ramp = min(1.0, (epoch - WARMUP_EPOCHS + 1) / PHYSICS_RAMP_EPOCHS)
-    return LAMBDA_PHYSICS * ramp
+    return LAMBDA_PHYSICS * ramp**2
 
 
 # -----------------------------------------------------------------------------
 # Output
 # -----------------------------------------------------------------------------
-def save_log(device, data_total, active_modes, epoch, loss, r2_1, r2_2, runtime):
+def save_log(
+    device,
+    data_total,
+    active_modes,
+    epoch,
+    loss,
+    r2_1,
+    r2_2,
+    r2_1_extra,
+    r2_2_extra,
+    runtime,
+):
     log_lines = [
         "Name: Double Pendulum Fourier PINN",
         f"Using device: {device}",
         f"Thread: {torch.get_num_threads()}",
         f"Data_total: {data_total}",
         f"Active Fourier modes: {active_modes}",
+        f"Fourier period factor: {FOURIER_PERIOD_FACTOR}",
+        f"Maximum angular frequency: {MAX_ANGULAR_FREQUENCY}",
         f"data_stop: {DATA_STOP}",
         f"data_step: {DATA_STEP}",
         f"m1: {m1}",
@@ -372,6 +397,9 @@ def save_log(device, data_total, active_modes, epoch, loss, r2_1, r2_2, runtime)
         f"R2 theta1: {r2_1:.6f}",
         f"R2 theta2: {r2_2:.6f}",
         f"R2 mean: {0.5 * (r2_1 + r2_2):.6f}",
+        f"R2 theta1 extrapolation: {r2_1_extra:.6f}",
+        f"R2 theta2 extrapolation: {r2_2_extra:.6f}",
+        f"R2 extrapolation mean: {0.5 * (r2_1_extra + r2_2_extra):.6f}",
         f"Runtime: {runtime}",
     ]
     LOG_FILE.write_text("\n".join(log_lines) + "\n", encoding="utf-8")
@@ -503,28 +531,31 @@ def main():
     t, theta1_ref, theta2_ref, omega1_ref, omega2_ref, dt = load_data(DATA_FILE)
     n_time = len(t)
 
-    frequencies = 2.0 * np.pi * np.fft.rfftfreq(n_time, d=dt)
+    n_fourier = FOURIER_PERIOD_FACTOR * n_time
+    frequencies = 2.0 * np.pi * np.fft.rfftfreq(n_fourier, d=dt)
     total_modes = len(frequencies)
-    active_modes = min(MAX_PHYSICS_MODES, total_modes)
+    active_modes = min(
+        int(np.searchsorted(frequencies, MAX_ANGULAR_FREQUENCY, side="right")),
+        total_modes,
+    )
 
-    data_stop = min(DATA_STOP, n_time)
+    data_stop = n_time if DATA_STOP is None else min(DATA_STOP, n_time)
     data_indices = np.arange(0, data_stop, DATA_STEP)
 
-    # Initialize Theta1 and Theta2 independently from sparse measurements.
-    initial_1 = estimate_initial_mode(
-        t[data_indices], theta1_ref[data_indices], frequencies[:active_modes]
-    )
-    initial_2 = estimate_initial_mode(
-        t[data_indices], theta2_ref[data_indices], frequencies[:active_modes]
+    initial_spectrum = estimate_initial_spectrum(
+        t[data_indices],
+        np.column_stack((theta1_ref[data_indices], theta2_ref[data_indices])),
+        frequencies[:active_modes],
+        INITIALIZATION_RIDGE,
     )
 
-    print(
-        f"Initial spectral modes: theta1={initial_1[1]}, "
-        f"theta2={initial_2[1]}"
-    )
     print(
         f"Active Fourier modes: {active_modes}/{total_modes} "
         f"(omega_max={frequencies[active_modes - 1]:.3f} rad/s)"
+    )
+    print(
+        f"Physical window: {t[-1] - t[0]:.2f} s; "
+        f"Fourier period: {n_fourier * dt:.2f} s"
     )
 
     omega = torch.tensor(frequencies, dtype=torch.float32, device=device)
@@ -555,15 +586,20 @@ def main():
 
     model = DoubleFourierPINN(
         omega_active,
-        n_time,
-        initial_parameters=(initial_1, initial_2),
+        n_fourier,
+        initial_spectrum,
     ).to(device)
 
     optimizer = torch.optim.AdamW(
         [
             {"params": model.network.parameters(), "lr": LEARNING_RATE_NETWORK, "weight_decay": WEIGHT_DECAY},
-            {"params": [model.spectral_coefficients], "lr": LEARNING_RATE_SPECTRUM, "weight_decay": WEIGHT_DECAY},
+            {"params": [model.spectral_coefficients], "lr": LEARNING_RATE_SPECTRUM, "weight_decay": 0.0},
         ]
+    )
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(
+        optimizer,
+        milestones=[40_000, 70_000, 90_000],
+        gamma=0.3,
     )
 
     history = {
@@ -573,7 +609,8 @@ def main():
     time_snapshots = []
     spectrum_snapshots = []
 
-    spectrum_plot_mask = frequencies <= SPECTRUM_XMAX
+    plot_frequencies = 2.0 * np.pi * np.fft.rfftfreq(n_time, d=dt)
+    spectrum_plot_mask = plot_frequencies <= SPECTRUM_XMAX
     spectrum_reference = np.column_stack(
         (
             np.abs(np.fft.rfft(theta1_ref) / n_time),
@@ -587,11 +624,13 @@ def main():
         optimizer.zero_grad(set_to_none=True)
 
         # Frequency-domain model -> two reconstructed time-domain angles.
-        spectrum, theta = reconstruct(model, omega_input, total_modes, n_time)
+        spectrum, theta = reconstruct(
+            model, omega_input, total_modes, n_fourier, n_time
+        )
 
         # Exact Fourier differentiation of the represented signal.
         velocity, acceleration = spectral_derivatives(
-            spectrum, omega, n_time
+            spectrum, omega, n_fourier, n_time
         )
 
         # 1) Sparse angle data loss.
@@ -599,7 +638,11 @@ def main():
 
         # 2) Explicit nonlinear double-pendulum physics loss.
         f1, f2 = explicit_physics_residuals(theta, velocity, acceleration)
-        physics_loss = torch.mean(f1**2 + f2**2)
+        acceleration_scale = g / min(l1, l2)
+        physics_loss = torch.mean(
+            (f1 / acceleration_scale) ** 2
+            + (f2 / acceleration_scale) ** 2
+        )
 
         # 3) Initial angle + angular-velocity loss.
         initial_loss = torch.mean((theta[0] - theta0_target) ** 2) + torch.mean(
@@ -622,6 +665,7 @@ def main():
         total_loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=GRADIENT_CLIP)
         optimizer.step()
+        scheduler.step()
 
         history["total"].append(total_loss.item())
         history["data"].append(data_loss.item())
@@ -633,7 +677,11 @@ def main():
             elapsed = format_time(time.time() - start_time)
             physics_weight = current_physics_weight(epoch)
             print(
-                f'\rEpoch {epoch:6d} | Loss {total_loss.item():.6e} | Time {elapsed}',
+                f"\rEpoch {epoch:6d} | Total {total_loss.item():.3e} | "
+                f"D {data_loss.item():.2e}[{LAMBDA_DATA * data_loss.item():.2e}] | "
+                f"P {physics_loss.item():.2e}[{physics_weight * physics_loss.item():.2e}] | "
+                f"IC {initial_loss.item():.2e}[{LAMBDA_INITIAL * initial_loss.item():.2e}] | "
+                f"Time {elapsed}",
                 end='',
                 flush=True,
             )
@@ -642,32 +690,44 @@ def main():
             model.eval()
             with torch.no_grad():
                 spectrum_now, theta_now = reconstruct(
-                    model, omega_input, total_modes, n_time
+                    model, omega_input, total_modes, n_fourier, n_time
                 )
             snapshot_epochs.append(epoch)
             time_snapshots.append(theta_now.cpu().numpy().copy())
+            theta_snapshot = theta_now.cpu().numpy()
             spectrum_snapshots.append(
-                np.abs(spectrum_now.cpu().numpy())[spectrum_plot_mask].copy()
+                np.abs(np.fft.rfft(theta_snapshot, axis=0) / n_time)[
+                    spectrum_plot_mask
+                ].copy()
             )
             model.train()
 
     model.eval()
     with torch.no_grad():
         spectrum_final, theta_final = reconstruct(
-            model, omega_input, total_modes, n_time
+            model, omega_input, total_modes, n_fourier, n_time
         )
 
     theta_final = theta_final.cpu().numpy()
-    spectrum_final = np.abs(spectrum_final.cpu().numpy())
+    spectrum_final = np.abs(np.fft.rfft(theta_final, axis=0) / n_time)
 
     r2_1 = coefficient_of_determination(theta1_ref, theta_final[:, 0])
     r2_2 = coefficient_of_determination(theta2_ref, theta_final[:, 1])
     r2_mean = 0.5 * (r2_1 + r2_2)
+    extrapolation_start = min(data_stop, n_time - 1)
+    r2_1_extra = coefficient_of_determination(
+        theta1_ref[extrapolation_start:], theta_final[extrapolation_start:, 0]
+    )
+    r2_2_extra = coefficient_of_determination(
+        theta2_ref[extrapolation_start:], theta_final[extrapolation_start:, 1]
+    )
 
     runtime = format_time(time.time() - start_time)
     print(f"\nR^2 theta1: {r2_1:.6f}")
     print(f"R^2 theta2: {r2_2:.6f}")
     print(f"R^2 mean:   {r2_mean:.6f}")
+    print(f"R^2 theta1 extrapolation: {r2_1_extra:.6f}")
+    print(f"R^2 theta2 extrapolation: {r2_2_extra:.6f}")
     print(f"Runtime: {runtime}")
 
     save_log(
@@ -678,6 +738,8 @@ def main():
         loss=total_loss.item(),
         r2_1=r2_1,
         r2_2=r2_2,
+        r2_1_extra=r2_1_extra,
+        r2_2_extra=r2_2_extra,
         runtime=runtime,
     )
 
@@ -691,7 +753,7 @@ def main():
         snapshot_epochs,
     )
     save_spectrum_animation(
-        frequencies[spectrum_plot_mask],
+        plot_frequencies[spectrum_plot_mask],
         spectrum_reference[spectrum_plot_mask],
         spectrum_snapshots,
         snapshot_epochs,
@@ -702,7 +764,7 @@ def main():
         theta2_ref,
         data_indices,
         theta_final,
-        frequencies,
+        plot_frequencies,
         spectrum_reference,
         spectrum_final,
         history,
