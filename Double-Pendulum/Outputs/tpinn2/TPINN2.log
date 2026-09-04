@@ -1,23 +1,25 @@
-Name: Double Pendulum TPINN
+Name: Double Pendulum Time PINN
 Using device: cpu
-Thread: 4
-Data_total: 1001
-data_stop: 300
-data_step: 10
-m1: 1.0
-m2: 1.0
-l1: 1.0
-l2: 1.0
-g: 10.0
-Initial learning rate: 0.001
-Weight decay: 0.0001
-Lambda data: 100.0
-Lambda physics: 0.1
-Lambda initial: 100.0
-Lambda energy: 0.001
-Epoch: 200000
-Loss: 1.196782e-02
-R2 theta1: 0.982621
-R2 theta2: 0.982046
-R2 mean: 0.982333
-Runtime: 00:28:39
+GPU: None
+CPU threads: 4
+Data file: /Users/kien-macbook/Desktop/Github-Kien/PINNs/Double-Pendulum/double_pendulum_data.dat
+Data stop: 300
+Data step: 10
+Physics points: 512
+Network width: 128
+Network depth: 4
+Learning rate: 0.0002
+Lambda data: 1000.0
+Lambda physics: 10.0
+Maximum epochs: 100000
+Epoch: 53000
+Runtime: 00:01:25
+Loss: 7.784492e-05
+Data loss: 6.839978e-08
+Physics loss: 9.445149e-07
+R2 theta1: 0.999486
+R2 theta2: 0.999521
+R2 mean: 0.999504
+R2 theta1 extrapolation: 0.999394
+R2 theta2 extrapolation: 0.999425
+R2 extrapolation mean: 0.999409
