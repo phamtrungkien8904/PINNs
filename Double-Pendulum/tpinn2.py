@@ -25,13 +25,55 @@ import torch.nn as nn
 plt.style.use("classic")
 plt.rcParams.update(
     {
-        "figure.dpi": 150,
+        "text.usetex": True,
+        "text.latex.preamble": r"""
+        \usepackage[T1]{fontenc}
+        \usepackage{lmodern}
+        \usepackage[utf8]{inputenc}
+        \usepackage{amsmath}
+        \usepackage{amssymb}
+        \usepackage{siunitx}
+        \usepackage{sfmath}
+        """,
+        "figure.dpi": 300,
+        "figure.figsize": (10 / 2.54, 6 / 2.54),
         "figure.facecolor": "white",
         "axes.facecolor": "white",
+        "axes.edgecolor": "black",
+        "axes.linewidth": 1,
+        "axes.labelsize": 8,
+        "axes.titlesize": 8,
+        "axes.labelcolor": "black",
         "savefig.facecolor": "white",
-        "font.size": 9,
+        "font.family": "sans-serif",
+        "font.sans-serif": "Arial",
+        "figure.constrained_layout.use": True,
+        "xtick.direction": "in",
+        "ytick.direction": "in",
+        "xtick.top": True,
+        "ytick.right": True,
+        "xtick.major.size": 4,
+        "ytick.major.size": 4,
+        "xtick.major.width": 1,
+        "ytick.major.width": 1,
+        "xtick.minor.visible": True,
+        "ytick.minor.visible": True,
+        "xtick.minor.size": 0,
+        "ytick.minor.size": 0,
+        "xtick.minor.width": 0,
+        "ytick.minor.width": 0,
+        "xtick.labelsize": 8,
+        "ytick.labelsize": 8,
         "legend.frameon": False,
-        "lines.linewidth": 1.2,
+        "legend.title_fontsize": 8,
+        "legend.fontsize": 8,
+        "legend.handlelength": 2,
+        "legend.loc": "best",
+        "legend.numpoints": 1,
+        "lines.linewidth": 1,
+        "lines.markersize": 4,
+        "lines.markeredgecolor": "white",
+        "lines.markeredgewidth": 0.5,
     }
 )
 
@@ -41,22 +83,22 @@ plt.rcParams.update(
 # -----------------------------------------------------------------------------
 SCRIPT_DIR = Path(__file__).resolve().parent
 DATA_FILE = SCRIPT_DIR / "double_pendulum_data.dat"
-OUTPUT_DIR = SCRIPT_DIR / "Outputs/tpinn2"
+OUTPUT_DIR = SCRIPT_DIR / "Outputs/tpinn2_002"
 OUTPUT_PREFIX = "tpinn2"
 LOG_FILE = OUTPUT_DIR / "TPINN2.log"
 
 RUN_NAME = "Double Pendulum Time PINN"
 SEED = 0
-EPOCHS = 100_000
+EPOCHS = 50_000
 PRINT_EVERY = 1_000
 EVALUATE_EVERY = 1_000
-SNAPSHOT_EVERY = 200
+SNAPSHOT_EVERY = 500
 HISTORY_EVERY = 100
-GIF_FPS = 20
+GIF_FPS = 30
 
 # Use the same sparse-data experiment as fpinn2.py: 30 samples over 0-2.9 s.
-DATA_STOP = 1000
-DATA_STEP = 50
+DATA_STOP = 300
+DATA_STEP = 30
 
 # A 512-point grid resolves the highest relevant trajectory frequency while
 # keeping the CPU comparison inexpensive.
@@ -85,7 +127,7 @@ VELOCITY_SCALE = np.sqrt(10.0)
 ACCELERATION_SCALE = 10.0
 
 # Stop when a stable, physics-consistent fit is reached.
-EARLY_STOP = True
+EARLY_STOP = False
 EARLY_STOP_MIN_EPOCH = 35_000
 EARLY_STOP_R2 = 0.999
 EARLY_STOP_PHYSICS = 1e-5
@@ -337,73 +379,44 @@ def save_log(
     LOG_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def configure_prediction_axes(axes, time_reference, theta_reference, data_indices):
-    labels = (r"$\theta_1$", r"$\theta_2$")
-    colors = ("blue", "red")
-    measured_stop = time_reference[min(DATA_STOP, len(time_reference)) - 1]
-    margin = 0.05 * (np.max(theta_reference) - np.min(theta_reference))
-
-    for component, axis in enumerate(axes):
+def configure_prediction_axes(axis, time_reference, theta_reference, data_indices):
+    """Use FPINN's shared angle axes, colors, and measurement markers."""
+    for component, color in enumerate(("blue", "red")):
+        label = rf"$\theta_{component + 1}$"
         axis.plot(
-            time_reference,
-            theta_reference[:, component],
-            color=colors[component],
-            alpha=0.35,
-            label=f"Numerical {labels[component]}",
+            time_reference, theta_reference[:, component],
+            color=color, alpha=0.35, label=f"Numerical {label}",
         )
         axis.plot(
-            time_reference[data_indices],
-            theta_reference[data_indices, component],
-            "o",
-            color=colors[component],
-            markersize=3,
-            label=f"Data {labels[component]}",
+            time_reference[data_indices], theta_reference[data_indices, component],
+            "o", color=color, label=f"Data {label}",
         )
-        axis.axvline(
-            measured_stop,
-            color="0.4",
-            linestyle=":",
-            linewidth=1,
-            label="Prediction start" if component == 0 else None,
-        )
-        axis.set_ylabel("Angle (rad)")
-        axis.set_ylim(
-            np.min(theta_reference[:, component]) - margin,
-            np.max(theta_reference[:, component]) + margin,
-        )
-        axis.legend(loc="upper right", ncol=3)
-    axes[-1].set_xlabel("Time (s)")
+    axis.set(xlabel="Time (s)", ylabel="Angle (rad)")
 
 
 def save_results(time_reference, theta_reference, data_indices, prediction):
-    fig, axes = plt.subplots(2, 1, figsize=(8, 6), sharex=True, constrained_layout=True)
-    configure_prediction_axes(axes, time_reference, theta_reference, data_indices)
-    colors = ("blue", "red")
-    labels = (r"TPINN $\theta_1$", r"TPINN $\theta_2$")
-    for component, axis in enumerate(axes):
+    fig, axis = plt.subplots()
+    configure_prediction_axes(axis, time_reference, theta_reference, data_indices)
+    for component, color in enumerate(("blue", "red")):
         axis.plot(
-            time_reference,
-            prediction[:, component],
-            "--",
-            color=colors[component],
-            label=labels[component],
+            time_reference, prediction[:, component], "--", color=color,
+            label=rf"TPINN $\theta_{component + 1}$",
         )
-        axis.legend(loc="upper right", ncol=3)
-    axes[0].set_title("Double Pendulum Time PINN")
-    fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_results.png", dpi=300)
+    axis.legend(ncol=2)
+    axis.set_title("Double Pendulum Time PINN")
+    fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_results.png", dpi=600)
     plt.close(fig)
 
 
 def save_loss(history):
     epochs = np.asarray(history["epoch"])
-    fig, axis = plt.subplots(figsize=(8, 4.5), constrained_layout=True)
-    axis.semilogy(epochs, history["total"], color="black", label="Total loss")
-    axis.semilogy(epochs, history["data"], color="blue", label="Data loss")
-    axis.semilogy(epochs, history["physics"], color="red", label="Physics loss")
-    axis.set(xlabel="Epoch", ylabel="Loss", title="TPINN loss convergence")
-    axis.grid(alpha=0.2)
+    fig, axis = plt.subplots()
+    axis.semilogy(epochs, history["total"], color="black", label="Total Loss")
+    axis.semilogy(epochs, history["data"], color="blue", label="Data Loss")
+    axis.semilogy(epochs, history["physics"], color="red", label="Physics Loss")
+    axis.set(xlabel="Epochs", ylabel="Loss", title="Loss Convergence")
     axis.legend()
-    fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_loss.png", dpi=300)
+    fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_loss.png", dpi=600)
     plt.close(fig)
 
 
@@ -414,21 +427,17 @@ def save_training_animation(
     snapshot_epochs,
     snapshots,
 ):
-    fig, axes = plt.subplots(2, 1, figsize=(8, 6), sharex=True, constrained_layout=True)
-    configure_prediction_axes(axes, time_reference, theta_reference, data_indices)
-    colors = ("blue", "red")
+    fig, axis = plt.subplots()
+    configure_prediction_axes(axis, time_reference, theta_reference, data_indices)
     lines = []
-    for component, axis in enumerate(axes):
+    for component, color in enumerate(("blue", "red")):
         line, = axis.plot(
-            time_reference,
-            snapshots[0][:, component],
-            "--",
-            color=colors[component],
+            time_reference, snapshots[0][:, component], "--", color=color,
             label=rf"TPINN $\theta_{component + 1}$",
         )
         lines.append(line)
-        axis.legend(loc="upper right", ncol=3)
-    title = axes[0].set_title("")
+    axis.legend(ncol=2)
+    title = axis.set_title("")
 
     def update(frame):
         for component, line in enumerate(lines):
@@ -438,12 +447,7 @@ def save_training_animation(
         )
         return *lines, title
 
-    movie = animation.FuncAnimation(
-        fig,
-        update,
-        frames=len(snapshots),
-        blit=True,
-    )
+    movie = animation.FuncAnimation(fig, update, frames=len(snapshots), blit=True)
     movie.save(
         OUTPUT_DIR / f"{OUTPUT_PREFIX}_training.gif",
         writer=animation.PillowWriter(fps=GIF_FPS),

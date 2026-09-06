@@ -3,6 +3,7 @@
 The local and HPC variants share the model and stopping rule. This launcher
 uses a wider network and denser physics grid, requires CUDA, enables A5000
 optimizations, and writes independent outputs under Outputs/tpinn2_hpc.
+Plot styling and combined theta1/theta2 PNG/GIF plots are shared with tpinn2.
 """
 
 import tpinn2

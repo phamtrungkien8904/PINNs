@@ -73,37 +73,38 @@ plt.rcParams.update(
 # Configuration
 # -----------------------------------------------------------------------------
 DATA_FILE = Path("double_pendulum_data.dat")
-OUTPUT_DIR = Path("./Outputs/fpinn2_001")
+OUTPUT_DIR = Path("./Outputs/fpinn2_002")
 OUTPUT_PREFIX = "fpinn2"
 LOG_FILE = OUTPUT_DIR / f"FPINN2.log"
 
 SEED = 0
-EPOCHS = 50_000
-SNAPSHOT_EVERY = 500
+EPOCHS = 100000
+SNAPSHOT_EVERY = 1000
 PRINT_EVERY = 1000
 
-# The physical 20 s record is only the first quarter of the Fourier period.
+# The physical record occupies the first half of the Fourier period.
 # This removes the false theta(0) == theta(20 s) boundary condition while
 # retaining exact spectral differentiation on the interval of interest.
 FOURIER_PERIOD_FACTOR = 2
-MAX_ANGULAR_FREQUENCY = 20.0
+MAX_ANGULAR_FREQUENCY = 40.0
 INITIALIZATION_RIDGE = 1e-2
 
 # Train the Fourier representation on data/IC first, then introduce physics.
-WARMUP_EPOCHS = 2_000
-PHYSICS_RAMP_EPOCHS = 8_000
+WARMUP_EPOCHS = 1000
+PHYSICS_RAMP_EPOCHS = 4000
 
-# Use sparse measurements from the first 10 s and predict the remaining 10 s.
-DATA_STOP = 300
+# Fixed training data: 10 measurements over 0-2.7 s.
+# Evaluate extrapolation from 3 s; do not expand this training window.
+DATA_STOP = 600
 DATA_STEP = 30
 
-LEARNING_RATE_NETWORK = 1e-4
-LEARNING_RATE_SPECTRUM = 2e-4
-WEIGHT_DECAY = 1e-7
+LEARNING_RATE_NETWORK = 0.0002
+LEARNING_RATE_SPECTRUM = 0.0002
+WEIGHT_DECAY = 1e-08
 
-LAMBDA_DATA = 1e3
-LAMBDA_PHYSICS = 1e3
-LAMBDA_INITIAL = 5e2
+LAMBDA_DATA = 1000.0
+LAMBDA_PHYSICS = 1000.0
+LAMBDA_INITIAL = 500.0
 LAMBDA_ENERGY = 0.0
 
 GRADIENT_CLIP = 1.0
@@ -598,7 +599,7 @@ def main():
     )
     scheduler = torch.optim.lr_scheduler.MultiStepLR(
         optimizer,
-        milestones=[40_000, 70_000, 90_000],
+        milestones=[20_000, 30_000, 35_000],
         gamma=0.3,
     )
 
