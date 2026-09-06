@@ -50,13 +50,13 @@ SEED = 0
 EPOCHS = 100_000
 PRINT_EVERY = 1_000
 EVALUATE_EVERY = 1_000
-SNAPSHOT_EVERY = 1_000
+SNAPSHOT_EVERY = 200
 HISTORY_EVERY = 100
 GIF_FPS = 20
 
 # Use the same sparse-data experiment as fpinn2.py: 30 samples over 0-2.9 s.
-DATA_STOP = 300
-DATA_STEP = 10
+DATA_STOP = 1000
+DATA_STEP = 50
 
 # A 512-point grid resolves the highest relevant trajectory frequency while
 # keeping the CPU comparison inexpensive.
@@ -77,8 +77,10 @@ WARMUP_EPOCHS = 2_000
 PHYSICS_RAMP_EPOCHS = 10_000
 PHYSICS_EXPANSION_EPOCHS = 30_000
 
-LAMBDA_DATA = 1_000.0
-LAMBDA_PHYSICS = 10.0
+LAMBDA_DATA = 1e3
+LAMBDA_PHYSICS = 1e3
+LAMBDA_INITIAL = 5e2
+LAMBDA_ENERGY = 0.0
 VELOCITY_SCALE = np.sqrt(10.0)
 ACCELERATION_SCALE = 10.0
 

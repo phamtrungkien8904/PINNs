@@ -1,0 +1,13 @@
+Using device: cpu
+CPU: 1 threads
+Active Fourier modes: 77/2003 (omega_max=11.926 rad/s)
+Physical window: 20.01 s; Fourier period: 40.04 s
+Epoch      0 | Loss 7.336e+00 | Time 00:00:00Epoch   1000 | Loss 7.285e-01 | Time 00:00:06Epoch   2000 | Loss 1.183e+00 | Time 00:00:12Epoch   3000 | Loss 2.613e+00 | Time 00:00:18Epoch   4000 | Loss 4.855e+00 | Time 00:00:25Epoch   5000 | Loss 7.386e+00 | Time 00:00:31Epoch   6000 | Loss 7.337e+00 | Time 00:00:36Epoch   7000 | Loss 7.284e+00 | Time 00:00:41Epoch   8000 | Loss 7.341e+00 | Time 00:00:46Epoch   9000 | Loss 7.279e+00 | Time 00:00:51Epoch  10000 | Loss 7.296e+00 | Time 00:00:55Epoch  11000 | Loss 7.230e+00 | Time 00:01:00Epoch  12000 | Loss 7.226e+00 | Time 00:01:07Epoch  13000 | Loss 7.220e+00 | Time 00:01:14Epoch  14000 | Loss 7.216e+00 | Time 00:01:20Epoch  15000 | Loss 7.227e+00 | Time 00:01:25Epoch  16000 | Loss 7.209e+00 | Time 00:01:29Epoch  17000 | Loss 7.208e+00 | Time 00:01:34Epoch  18000 | Loss 7.214e+00 | Time 00:01:39Epoch  19000 | Loss 7.196e+00 | Time 00:01:44Epoch  20000 | Loss 7.191e+00 | Time 00:01:48Epoch  21000 | Loss 7.186e+00 | Time 00:01:53Epoch  22000 | Loss 7.220e+00 | Time 00:01:58Epoch  23000 | Loss 7.179e+00 | Time 00:02:02Epoch  24000 | Loss 7.179e+00 | Time 00:02:07Epoch  25000 | Loss 7.170e+00 | Time 00:02:12Epoch  26000 | Loss 7.169e+00 | Time 00:02:17Epoch  27000 | Loss 7.163e+00 | Time 00:02:22Epoch  28000 | Loss 7.160e+00 | Time 00:02:26Epoch  29000 | Loss 7.155e+00 | Time 00:02:30
+R^2 theta1: 0.119184
+R^2 theta2: 0.137276
+R^2 mean:   0.128230
+R^2 theta1 extrapolation: -0.033541
+R^2 theta2 extrapolation: 0.000850
+Runtime: 00:02:33
+Saving figures and animations...
+Figures and animations saved successfully.

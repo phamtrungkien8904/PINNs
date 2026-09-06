@@ -73,20 +73,20 @@ plt.rcParams.update(
 # Configuration
 # -----------------------------------------------------------------------------
 DATA_FILE = Path("double_pendulum_data.dat")
-OUTPUT_DIR = Path("./Outputs/fpinn2")
+OUTPUT_DIR = Path("./Outputs/fpinn2_001")
 OUTPUT_PREFIX = "fpinn2"
 LOG_FILE = OUTPUT_DIR / f"FPINN2.log"
 
 SEED = 0
-EPOCHS = 1_000_000
-SNAPSHOT_EVERY = 1_000
+EPOCHS = 50_000
+SNAPSHOT_EVERY = 500
 PRINT_EVERY = 1000
 
 # The physical 20 s record is only the first quarter of the Fourier period.
 # This removes the false theta(0) == theta(20 s) boundary condition while
 # retaining exact spectral differentiation on the interval of interest.
-FOURIER_PERIOD_FACTOR = 4
-MAX_ANGULAR_FREQUENCY = 12.0
+FOURIER_PERIOD_FACTOR = 2
+MAX_ANGULAR_FREQUENCY = 20.0
 INITIALIZATION_RIDGE = 1e-2
 
 # Train the Fourier representation on data/IC first, then introduce physics.
@@ -95,14 +95,14 @@ PHYSICS_RAMP_EPOCHS = 8_000
 
 # Use sparse measurements from the first 10 s and predict the remaining 10 s.
 DATA_STOP = 300
-DATA_STEP = 10
+DATA_STEP = 30
 
 LEARNING_RATE_NETWORK = 1e-4
 LEARNING_RATE_SPECTRUM = 2e-4
 WEIGHT_DECAY = 1e-7
 
 LAMBDA_DATA = 1e3
-LAMBDA_PHYSICS = 1e1
+LAMBDA_PHYSICS = 1e3
 LAMBDA_INITIAL = 5e2
 LAMBDA_ENERGY = 0.0
 
