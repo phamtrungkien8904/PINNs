@@ -1,0 +1,25 @@
+Name: Double Pendulum Time PINN
+Using device: cpu
+GPU: None
+CPU threads: 4
+Data file: /Users/kien-macbook/Desktop/Github-Kien/PINNs/Double-Pendulum/double_pendulum_data.dat
+Data stop: 2000
+Data step: 40
+Physics points: 512
+Network width: 128
+Network depth: 4
+Learning rate: 0.0002
+Lambda data: 1000.0
+Lambda physics: 1000.0
+Maximum epochs: 100000
+Epoch: 100000
+Runtime: 00:03:00
+Loss: 6.275101e-01
+Data loss: 2.292159e-04
+Physics loss: 3.982942e-04
+R2 theta1: 0.999537
+R2 theta2: 0.999960
+R2 mean: 0.999749
+R2 theta1 extrapolation: -13.261605
+R2 theta2 extrapolation: -78.753041
+R2 extrapolation mean: -46.007323

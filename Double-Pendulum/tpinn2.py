@@ -83,13 +83,13 @@ plt.rcParams.update(
 # -----------------------------------------------------------------------------
 SCRIPT_DIR = Path(__file__).resolve().parent
 DATA_FILE = SCRIPT_DIR / "double_pendulum_data.dat"
-OUTPUT_DIR = SCRIPT_DIR / "Outputs/tpinn2_002"
+OUTPUT_DIR = SCRIPT_DIR / "Outputs/tpinn2_003"
 OUTPUT_PREFIX = "tpinn2"
 LOG_FILE = OUTPUT_DIR / "TPINN2.log"
 
 RUN_NAME = "Double Pendulum Time PINN"
 SEED = 0
-EPOCHS = 50_000
+EPOCHS = 100_000
 PRINT_EVERY = 1_000
 EVALUATE_EVERY = 1_000
 SNAPSHOT_EVERY = 500
@@ -97,8 +97,8 @@ HISTORY_EVERY = 100
 GIF_FPS = 30
 
 # Use the same sparse-data experiment as fpinn2.py: 30 samples over 0-2.9 s.
-DATA_STOP = 300
-DATA_STEP = 30
+DATA_STOP = 2000
+DATA_STEP = 40
 
 # A 512-point grid resolves the highest relevant trajectory frequency while
 # keeping the CPU comparison inexpensive.

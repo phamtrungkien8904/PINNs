@@ -73,13 +73,13 @@ plt.rcParams.update(
 # Configuration
 # -----------------------------------------------------------------------------
 DATA_FILE = Path("double_pendulum_data.dat")
-OUTPUT_DIR = Path("./Outputs/fpinn2_002")
+OUTPUT_DIR = Path("./Outputs/fpinn2_003")
 OUTPUT_PREFIX = "fpinn2"
 LOG_FILE = OUTPUT_DIR / f"FPINN2.log"
 
 SEED = 0
 EPOCHS = 100000
-SNAPSHOT_EVERY = 1000
+SNAPSHOT_EVERY = 500
 PRINT_EVERY = 1000
 
 # The physical record occupies the first half of the Fourier period.
@@ -95,8 +95,8 @@ PHYSICS_RAMP_EPOCHS = 4000
 
 # Fixed training data: 10 measurements over 0-2.7 s.
 # Evaluate extrapolation from 3 s; do not expand this training window.
-DATA_STOP = 600
-DATA_STEP = 30
+DATA_STOP = 2000
+DATA_STEP = 40
 
 LEARNING_RATE_NETWORK = 0.0002
 LEARNING_RATE_SPECTRUM = 0.0002
