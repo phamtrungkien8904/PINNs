@@ -97,8 +97,8 @@ HISTORY_EVERY = 100
 GIF_FPS = 30
 
 # Use the same sparse-data experiment as fpinn2.py: 30 samples over 0-2.9 s.
-DATA_STOP = 2000
-DATA_STEP = 40
+DATA_STOP = 1000
+DATA_STEP = 20
 
 # A 512-point grid resolves the highest relevant trajectory frequency while
 # keeping the CPU comparison inexpensive.
