@@ -2,30 +2,30 @@ Name: Double Pendulum Fourier PINN
 Using device: cpu
 Thread: 4
 Data_total: 2002
-Active Fourier modes: 255
+Active Fourier modes: 96
 Fourier period factor: 2
-Maximum angular frequency: 40.0
-data_stop: 2000
-data_step: 40
+Maximum angular frequency: 15.0
+data_stop: 1500
+data_step: 20
 m1: 1.0
 m2: 1.0
 l1: 1.0
 l2: 1.0
 g: 10.0
 Learning rate network: 0.0002
-Learning rate spectrum: 0.0002
-Lambda data: 1000.0
-Lambda physics: 1000.0
-Lambda initial: 500.0
-Lambda energy: 0.0
-Warmup epochs: 1000
-Physics ramp epochs: 4000
+Learning rate spectrum: 0.001
+Lambda data: 10000.0
+Lambda physics: 100.0
+Lambda initial: 10000.0
+Lambda energy: 0.01
+Warmup epochs: 5000
+Physics ramp epochs: 10000
 Epoch: 100000
-Loss: 8.384454e+06
-R2 theta1: -0.299386
-R2 theta2: 0.629147
-R2 mean: 0.164880
-R2 theta1 extrapolation: -33687.476015
-R2 theta2 extrapolation: -484.196495
-R2 extrapolation mean: -17085.836255
-Runtime: 00:02:23
+Loss: 1.579593e+02
+R2 theta1: -0.206578
+R2 theta2: 0.987593
+R2 mean: 0.390507
+R2 theta1 extrapolation: -9.465915
+R2 theta2 extrapolation: 0.922614
+R2 extrapolation mean: -4.271651
+Runtime: 00:02:02

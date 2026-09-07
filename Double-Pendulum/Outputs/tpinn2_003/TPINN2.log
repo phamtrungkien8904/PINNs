@@ -3,23 +3,23 @@ Using device: cpu
 GPU: None
 CPU threads: 4
 Data file: /Users/kien-macbook/Desktop/Github-Kien/PINNs/Double-Pendulum/double_pendulum_data.dat
-Data stop: 1000
-Data step: 20
-Physics points: 512
-Network width: 128
-Network depth: 4
-Learning rate: 0.0002
+Data stop: 1001
+Data step: 1
+Physics points: 2048
+Network width: 64
+Network depth: 3
+Learning rate: 0.0003
 Lambda data: 1000.0
 Lambda physics: 1000.0
-Maximum epochs: 100000
-Epoch: 100000
-Runtime: 00:02:40
-Loss: 6.807077e-01
-Data loss: 1.169905e-05
-Physics loss: 6.690086e-04
-R2 theta1: -0.698380
-R2 theta2: -0.473332
-R2 mean: -0.585856
-R2 theta1 extrapolation: -2.721552
-R2 theta2 extrapolation: -2.279390
-R2 extrapolation mean: -2.500471
+Maximum epochs: 180000
+Epoch: 180000
+Runtime: 00:06:10
+Loss: 6.478278e+00
+Data loss: 9.663246e-04
+Physics loss: 5.511953e-03
+R2 theta1: 0.659067
+R2 theta2: 0.662849
+R2 mean: 0.660958
+R2 theta1 extrapolation: -0.036710
+R2 theta2 extrapolation: -0.429684
+R2 extrapolation mean: -0.233197

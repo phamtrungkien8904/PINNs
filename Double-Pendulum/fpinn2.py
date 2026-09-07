@@ -78,7 +78,7 @@ OUTPUT_PREFIX = "fpinn2"
 LOG_FILE = OUTPUT_DIR / f"FPINN2.log"
 
 SEED = 0
-EPOCHS = 100000
+EPOCHS = 100_000
 SNAPSHOT_EVERY = 500
 PRINT_EVERY = 1000
 
@@ -86,26 +86,26 @@ PRINT_EVERY = 1000
 # This removes the false theta(0) == theta(20 s) boundary condition while
 # retaining exact spectral differentiation on the interval of interest.
 FOURIER_PERIOD_FACTOR = 2
-MAX_ANGULAR_FREQUENCY = 40.0
-INITIALIZATION_RIDGE = 1e-2
+MAX_ANGULAR_FREQUENCY = 15.0
+INITIALIZATION_RIDGE = 0.1
 
 # Train the Fourier representation on data/IC first, then introduce physics.
-WARMUP_EPOCHS = 1000
-PHYSICS_RAMP_EPOCHS = 4000
+WARMUP_EPOCHS = 5000
+PHYSICS_RAMP_EPOCHS = 10000
 
 # Fixed training data: 10 measurements over 0-2.7 s.
 # Evaluate extrapolation from 3 s; do not expand this training window.
-DATA_STOP = 2000
-DATA_STEP = 40
+DATA_STOP = 1500
+DATA_STEP = 20
 
 LEARNING_RATE_NETWORK = 0.0002
-LEARNING_RATE_SPECTRUM = 0.0002
-WEIGHT_DECAY = 1e-08
+LEARNING_RATE_SPECTRUM = 0.001
+WEIGHT_DECAY = 0.0
 
-LAMBDA_DATA = 1000.0
-LAMBDA_PHYSICS = 1000.0
-LAMBDA_INITIAL = 500.0
-LAMBDA_ENERGY = 0.0
+LAMBDA_DATA = 10000.0
+LAMBDA_PHYSICS = 100.0
+LAMBDA_INITIAL = 10000.0
+LAMBDA_ENERGY = 0.01
 
 GRADIENT_CLIP = 1.0
 
