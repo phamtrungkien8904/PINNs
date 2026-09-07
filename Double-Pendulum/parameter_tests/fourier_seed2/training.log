@@ -1,5 +1,0 @@
-Using device: cpu
-CPU: 1 threads
-Active Fourier modes: 128/2003 (omega_max=19.929 rad/s)
-Physical window: 20.01 s; Fourier period: 40.04 s
-Epoch      0 | Loss 7.312e+00 | Time 00:00:00Epoch   1000 | Loss 1.731e+00 | Time 00:00:01Epoch   2000 | Loss 3.445e-01 | Time 00:00:03Epoch   3000 | Loss 1.405e+01 | Time 00:00:05Epoch   4000 | Loss 4.443e-01 | Time 00:00:06Epoch   5000 | Loss 5.124e-01 | Time 00:00:08Epoch   6000 | Loss 5.371e-01 | Time 00:00:10Epoch   7000 | Loss 2.956e-01 | Time 00:00:11Epoch   8000 | Loss 3.173e-01 | Time 00:00:13Epoch   9000 | Loss 5.305e-01 | Time 00:00:14Epoch  10000 | Loss 3.071e-01 | Time 00:00:16Epoch  11000 | Loss 3.433e-02 | Time 00:00:18Epoch  12000 | Loss 3.636e-02 | Time 00:00:19Epoch  13000 | Loss 2.522e-01 | Time 00:00:21Epoch  14000 | Loss 2.755e-02 | Time 00:00:23Epoch  15000 | Loss 3.486e-02 | Time 00:00:24Epoch  16000 | Loss 9.489e-02 | Time 00:00:26Epoch  17000 | Loss 3.102e-02 | Time 00:00:27Epoch  18000 | Loss 3.432e-02 | Time 00:00:29Epoch  19000 | Loss 4.239e-02 | Time 00:00:31Epoch  20000 | Loss 2.731e-02 | Time 00:00:33Epoch  21000 | Loss 4.307e-02 | Time 00:00:34

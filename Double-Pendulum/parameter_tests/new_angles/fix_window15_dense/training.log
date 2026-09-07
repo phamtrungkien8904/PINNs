@@ -1,13 +1,0 @@
-Using device: cpu
-CPU: 1 threads
-Active Fourier modes: 128/2003 (omega_max=19.929 rad/s)
-Physical window: 20.01 s; Fourier period: 40.04 s
-Epoch      0 | Loss 6.754e-01 | Time 00:00:00Epoch   1000 | Loss 3.000e-01 | Time 00:00:02Epoch   2000 | Loss 6.115e-01 | Time 00:00:05Epoch   3000 | Loss 1.899e+00 | Time 00:00:08Epoch   4000 | Loss 2.770e+00 | Time 00:00:11Epoch   5000 | Loss 3.895e+00 | Time 00:00:14Epoch   6000 | Loss 3.913e+00 | Time 00:00:17Epoch   7000 | Loss 3.981e+00 | Time 00:00:20Epoch   8000 | Loss 4.019e+00 | Time 00:00:22Epoch   9000 | Loss 4.448e+00 | Time 00:00:25Epoch  10000 | Loss 3.953e+00 | Time 00:00:28Epoch  11000 | Loss 3.922e+00 | Time 00:00:32Epoch  12000 | Loss 3.966e+00 | Time 00:00:36Epoch  13000 | Loss 4.384e+00 | Time 00:00:40Epoch  14000 | Loss 3.969e+00 | Time 00:00:44Epoch  15000 | Loss 3.983e+00 | Time 00:00:47Epoch  16000 | Loss 4.273e+00 | Time 00:00:50Epoch  17000 | Loss 3.942e+00 | Time 00:00:53Epoch  18000 | Loss 3.924e+00 | Time 00:00:56Epoch  19000 | Loss 4.057e+00 | Time 00:00:58Epoch  20000 | Loss 3.871e+00 | Time 00:01:01Epoch  21000 | Loss 3.673e+00 | Time 00:01:04Epoch  22000 | Loss 3.683e+00 | Time 00:01:09Epoch  23000 | Loss 3.666e+00 | Time 00:01:12Epoch  24000 | Loss 3.675e+00 | Time 00:01:16Epoch  25000 | Loss 3.668e+00 | Time 00:01:19Epoch  26000 | Loss 3.659e+00 | Time 00:01:23Epoch  27000 | Loss 3.665e+00 | Time 00:01:27Epoch  28000 | Loss 3.674e+00 | Time 00:01:31Epoch  29000 | Loss 3.987e+00 | Time 00:01:34Epoch  30000 | Loss 3.692e+00 | Time 00:01:38Epoch  31000 | Loss 3.639e+00 | Time 00:01:42Epoch  32000 | Loss 3.640e+00 | Time 00:01:46Epoch  33000 | Loss 3.642e+00 | Time 00:01:50Epoch  34000 | Loss 3.640e+00 | Time 00:01:54Epoch  35000 | Loss 3.639e+00 | Time 00:01:58Epoch  36000 | Loss 3.639e+00 | Time 00:02:03Epoch  37000 | Loss 3.639e+00 | Time 00:02:07Epoch  38000 | Loss 3.639e+00 | Time 00:02:11Epoch  39000 | Loss 3.642e+00 | Time 00:02:16
-R^2 theta1: 0.808926
-R^2 theta2: 0.818349
-R^2 mean:   0.813637
-R^2 theta1 extrapolation: 0.252981
-R^2 theta2 extrapolation: 0.297524
-Runtime: 00:02:22
-Saving figures and animations...
-Figures and animations saved successfully.

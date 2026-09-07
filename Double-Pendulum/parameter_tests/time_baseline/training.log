@@ -1,9 +1,0 @@
-Using device: cpu
-CPU: 1 threads
-Epoch      0 | Loss 1.272827e+02 | Time 00:00:00Epoch   1000 | Loss 7.091616e+00 | Time 00:00:07Epoch   2000 | Loss 2.843824e+00 | Time 00:00:14Epoch   3000 | Loss 5.429961e-01 | Time 00:00:20Epoch   4000 | Loss 2.817392e-01 | Time 00:00:26Epoch   5000 | Loss 2.460947e-01 | Time 00:00:32Epoch   6000 | Loss 2.036114e-01 | Time 00:00:38Epoch   7000 | Loss 1.628333e-01 | Time 00:00:44Epoch   8000 | Loss 1.522624e-01 | Time 00:00:50Epoch   9000 | Loss 1.378206e-01 | Time 00:00:56Epoch  10000 | Loss 1.272417e-01 | Time 00:01:02Epoch  11000 | Loss 1.036739e-01 | Time 00:01:08Epoch  12000 | Loss 1.370983e-01 | Time 00:01:14Epoch  13000 | Loss 1.149960e-01 | Time 00:01:20Epoch  14000 | Loss 6.355865e-02 | Time 00:01:27Epoch  15000 | Loss 8.762469e-02 | Time 00:01:33Epoch  16000 | Loss 1.190565e-01 | Time 00:01:39Epoch  17000 | Loss 9.373877e-02 | Time 00:01:46Epoch  18000 | Loss 1.052858e-01 | Time 00:01:52Epoch  19000 | Loss 7.999533e-02 | Time 00:01:58Epoch  20000 | Loss 5.354224e-02 | Time 00:02:04Epoch  21000 | Loss 7.030989e-02 | Time 00:02:10Epoch  22000 | Loss 6.466424e-02 | Time 00:02:17Epoch  23000 | Loss 7.322692e-02 | Time 00:02:23Epoch  24000 | Loss 6.032855e-02 | Time 00:02:29
-R^2 theta1: 0.171472
-R^2 theta2: 0.179527
-R^2 mean:   0.175500
-Runtime: 00:02:35
-Saving figures and animation...
-All plots and animations saved successfully.

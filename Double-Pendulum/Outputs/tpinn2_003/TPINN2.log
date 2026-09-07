@@ -13,13 +13,13 @@ Lambda data: 1000.0
 Lambda physics: 1000.0
 Maximum epochs: 100000
 Epoch: 100000
-Runtime: 00:02:45
-Loss: 1.654378e+00
-Data loss: 7.043377e-04
-Physics loss: 9.500408e-04
-R2 theta1: -1.502279
-R2 theta2: 0.701819
-R2 mean: -0.400230
-R2 theta1 extrapolation: -3.208519
-R2 theta2 extrapolation: -1.631436
-R2 extrapolation mean: -2.419977
+Runtime: 00:02:40
+Loss: 6.807077e-01
+Data loss: 1.169905e-05
+Physics loss: 6.690086e-04
+R2 theta1: -0.698380
+R2 theta2: -0.473332
+R2 mean: -0.585856
+R2 theta1 extrapolation: -2.721552
+R2 theta2 extrapolation: -2.279390
+R2 extrapolation mean: -2.500471
