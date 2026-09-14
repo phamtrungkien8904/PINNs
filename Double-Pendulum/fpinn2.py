@@ -79,7 +79,7 @@ LOG_FILE = OUTPUT_DIR / f"FPINN2.log"
 
 SEED = 0
 EPOCHS = 100_000
-SNAPSHOT_EVERY = 500
+SNAPSHOT_EVERY = 1000
 PRINT_EVERY = 1000
 
 # The physical record occupies the first half of the Fourier period.
