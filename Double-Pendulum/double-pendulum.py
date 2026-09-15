@@ -97,7 +97,7 @@ def deriv(y, t, L1, L2, m1, m2):
 
 tmax, dt = 50, 0.01
 t = np.arange(0, tmax + dt, dt)
-y0 = np.array([-np.pi/2, 0, -np.pi/3, 0])
+y0 = np.array([np.pi/2, 0, np.pi/4, 0])
 y = odeint(deriv, y0, t, args=(L1, L2, m1, m2))
 
 theta1, theta2 = y[:, 0], y[:, 2]
@@ -166,15 +166,18 @@ y2 = y1 - L2 * np.cos(theta2)
 
 ############### END ANIMATION SECTION #########################
 
-fig, ax = plt.subplots(figsize=(6/2.54, 4/2.54))
+fig, ax = plt.subplots(figsize=(8/2.54, 6/2.54))
 ax.plot(t, theta1, label="Bob 1", color="blue")
 ax.plot(t, theta2, label="Bob 2", color="red")
-ax.set_title("Double Pendulum")
+ax.set_title("Double Pendulum (Time domain)")
 ax.set_xlim(0, tmax)
 ax.set_xlabel("Time (s)")
 ax.set_ylabel("Angle (rad)")
+ax.set_ylim(-10, 10)
+ax.set_xlim(0, 20)
 ax.legend()
 plt.savefig("double_pendulum_time.png", dpi=600)
+# plt.savefig("double_pendulum_time_2.pdf", format="pdf")
 plt.show()
 
 
@@ -190,15 +193,17 @@ freq = freq[mask]
 mag1 = 2.0 / bins * np.abs(signal_fft1[mask])
 mag2 = 2.0 / bins * np.abs(signal_fft2[mask])
 
-fig, ax = plt.subplots(figsize=(6/2.54, 4/2.54))
-ax.plot(freq, mag1, label="Bob 1", color="blue", marker="o")
-ax.plot(freq, mag2, label="Bob 2", color="red", marker="s")
-ax.set_title("Frequency Spectrum")
+fig, ax = plt.subplots(figsize=(8/2.54, 6/2.54))
+ax.plot(freq, mag1, label="Bob 1", color="blue")
+ax.plot(freq, mag2, label="Bob 2", color="red")
+ax.set_title("Double Pendulum (Frequency domain)")
 ax.set_xlabel("Frequency (Hz)")
 ax.set_ylabel("Magnitude")
 ax.set_xlim(0, 2)  # Limit x-axis to focus on low frequencies
+ax.set_ylim(0, 1)  # Limit y-axis to focus on relevant magnitudes
 ax.legend()
 plt.savefig("double_pendulum_fft.png", dpi=600)
+# plt.savefig("double_pendulum_fft_2.pdf", format="pdf")
 plt.show()
 
 

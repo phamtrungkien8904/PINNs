@@ -95,8 +95,8 @@ PHYSICS_RAMP_EPOCHS = 10000
 
 # Fixed training data: 10 measurements over 0-2.7 s.
 # Evaluate extrapolation from 3 s; do not expand this training window.
-DATA_STOP = 1500
-DATA_STEP = 20
+DATA_STOP = 100
+DATA_STEP = 5
 
 LEARNING_RATE_NETWORK = 0.0002
 LEARNING_RATE_SPECTRUM = 0.001
@@ -114,10 +114,10 @@ SPECTRUM_YMAX = None
 GIF_FPS = 30
 
 # Double-pendulum parameters: same convention as tpinn2_ver2.py.
-m1 = 1.0
+m1 = 3.0
 m2 = 1.0
 l1 = 1.0
-l2 = 1.0
+l2 = 1.5
 g = 10.0
 
 torch.manual_seed(SEED)
