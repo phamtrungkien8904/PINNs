@@ -114,10 +114,10 @@ SPECTRUM_YMAX = None
 GIF_FPS = 30
 
 # Double-pendulum parameters: same convention as tpinn2_ver2.py.
-m1 = 3.0
+m1 = 1.0
 m2 = 1.0
 l1 = 1.0
-l2 = 1.5
+l2 = 1.0
 g = 10.0
 
 torch.manual_seed(SEED)
