@@ -78,7 +78,7 @@ OUTPUT_PREFIX = "fpinn2"
 LOG_FILE = OUTPUT_DIR / f"FPINN2.log"
 
 SEED = 0
-EPOCHS = 100_000
+EPOCHS = 70_000
 SNAPSHOT_EVERY = 1000
 PRINT_EVERY = 1000
 
@@ -86,25 +86,25 @@ PRINT_EVERY = 1000
 # This removes the false theta(0) == theta(20 s) boundary condition while
 # retaining exact spectral differentiation on the interval of interest.
 FOURIER_PERIOD_FACTOR = 2
-MAX_ANGULAR_FREQUENCY = 15.0
+MAX_ANGULAR_FREQUENCY = 20.0
 INITIALIZATION_RIDGE = 0.1
 
 # Train the Fourier representation on data/IC first, then introduce physics.
-WARMUP_EPOCHS = 5000
-PHYSICS_RAMP_EPOCHS = 10000
+WARMUP_EPOCHS = 2000
+PHYSICS_RAMP_EPOCHS = 8000
 
 # Fixed training data: 10 measurements over 0-2.7 s.
 # Evaluate extrapolation from 3 s; do not expand this training window.
-DATA_STOP = 100
-DATA_STEP = 5
+DATA_STOP = 300
+DATA_STEP = 30
 
-LEARNING_RATE_NETWORK = 0.0002
-LEARNING_RATE_SPECTRUM = 0.001
+LEARNING_RATE_NETWORK = 0.0005
+LEARNING_RATE_SPECTRUM = 0.0005
 WEIGHT_DECAY = 0.0
 
-LAMBDA_DATA = 10000.0
-LAMBDA_PHYSICS = 100.0
-LAMBDA_INITIAL = 10000.0
+LAMBDA_DATA = 1000.0
+LAMBDA_PHYSICS = 1000.0
+LAMBDA_INITIAL = 500.0
 LAMBDA_ENERGY = 0.01
 
 GRADIENT_CLIP = 1.0
@@ -196,6 +196,10 @@ class DoubleFourierPINN(nn.Module):
         # [Re Theta1, Im Theta1, Re Theta2, Im Theta2]
         self.network = nn.Sequential(
             nn.Linear(1, 128),
+            nn.Tanh(),
+            nn.Linear(128, 128),
+            nn.Tanh(),
+            nn.Linear(128, 128),
             nn.Tanh(),
             nn.Linear(128, 128),
             nn.Tanh(),

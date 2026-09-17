@@ -1,0 +1,35 @@
+Name: Double Pendulum Fourier PINN
+Using device: cpu
+Thread: 1
+Data_total: 5001
+Active Fourier modes: 319
+Fourier period factor: 2
+Maximum angular frequency: 20.0
+data_stop: 300
+data_step: 30
+m1: 1.0
+m2: 1.0
+l1: 1.0
+l2: 1.0
+g: 10.0
+Optimizer: L-BFGS (strong Wolfe line search)
+Precision: torch.float64
+Learning rate: 1.0
+History size: 100
+Maximum gradient evaluations: 50000
+R2 stopping threshold (each angle, full + extrapolation): 0.991
+Epoch definition: objective/gradient evaluations including line-search trials
+Lambda data: 1000.0
+Lambda physics: 1000.0
+Lambda initial: 500.0
+Lambda energy: 0.01
+Epoch: 14292
+Loss: 1.001870e-03
+R2 theta1: 0.991556
+R2 theta2: 0.991680
+R2 mean: 0.991618
+R2 theta1 extrapolation: 0.991011
+R2 theta2 extrapolation: 0.991086
+R2 extrapolation mean: 0.991049
+Runtime: 00:02:49
+Stop reason: r2_target

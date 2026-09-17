@@ -97,7 +97,7 @@ def deriv(y, t, L1, L2, m1, m2):
 
 tmax, dt = 50, 0.01
 t = np.arange(0, tmax + dt, dt)
-y0 = np.array([np.pi/2, 0, np.pi/4, 0])
+y0 = np.array([-np.pi/8, 0, -np.pi/10, 0])
 y = odeint(deriv, y0, t, args=(L1, L2, m1, m2))
 
 theta1, theta2 = y[:, 0], y[:, 2]
@@ -200,10 +200,10 @@ ax.set_title("Double Pendulum (Frequency domain)")
 ax.set_xlabel("Frequency (Hz)")
 ax.set_ylabel("Magnitude")
 ax.set_xlim(0, 2)  # Limit x-axis to focus on low frequencies
-ax.set_ylim(0, 1)  # Limit y-axis to focus on relevant magnitudes
+ax.set_ylim(0, 0.5)  # Limit y-axis to focus on relevant magnitudes
 ax.legend()
 plt.savefig("double_pendulum_fft.png", dpi=600)
-# plt.savefig("double_pendulum_fft_2.pdf", format="pdf")
+# plt.savefig("double_pendulum_fft_1.pdf", format="pdf")
 plt.show()
 
 
