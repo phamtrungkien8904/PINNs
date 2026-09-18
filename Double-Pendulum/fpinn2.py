@@ -73,13 +73,13 @@ plt.rcParams.update(
 # Configuration
 # -----------------------------------------------------------------------------
 DATA_FILE = Path("double_pendulum_data.dat")
-OUTPUT_DIR = Path("./Outputs/fpinn2_003")
+OUTPUT_DIR = Path("./Outputs/fpinn2_005")
 OUTPUT_PREFIX = "fpinn2"
 LOG_FILE = OUTPUT_DIR / f"FPINN2.log"
 
 SEED = 0
-EPOCHS = 70_000
-SNAPSHOT_EVERY = 1000
+EPOCHS = 50_000
+SNAPSHOT_EVERY = 500
 PRINT_EVERY = 1000
 
 # The physical record occupies the first half of the Fourier period.
@@ -89,23 +89,23 @@ FOURIER_PERIOD_FACTOR = 2
 MAX_ANGULAR_FREQUENCY = 20.0
 INITIALIZATION_RIDGE = 0.1
 
-# Train the Fourier representation on data/IC first, then introduce physics.
-WARMUP_EPOCHS = 2000
-PHYSICS_RAMP_EPOCHS = 8000
+# Apply the full physics loss from epoch 0; keep the original AdamW loop.
+WARMUP_EPOCHS = 0
+PHYSICS_RAMP_EPOCHS = 1
 
 # Fixed training data: 10 measurements over 0-2.7 s.
 # Evaluate extrapolation from 3 s; do not expand this training window.
 DATA_STOP = 300
 DATA_STEP = 30
 
-LEARNING_RATE_NETWORK = 0.0005
-LEARNING_RATE_SPECTRUM = 0.0005
+LEARNING_RATE_NETWORK = 0.0001
+LEARNING_RATE_SPECTRUM = 0.0002
 WEIGHT_DECAY = 0.0
 
 LAMBDA_DATA = 1000.0
 LAMBDA_PHYSICS = 1000.0
 LAMBDA_INITIAL = 500.0
-LAMBDA_ENERGY = 0.01
+LAMBDA_ENERGY = 1.0
 
 GRADIENT_CLIP = 1.0
 
