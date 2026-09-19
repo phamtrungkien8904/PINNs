@@ -20,12 +20,12 @@ Lambda initial: 500.0
 Lambda energy: 1.0
 Warmup epochs: 0
 Physics ramp epochs: 1
-Epoch: 100
-Loss: 8.224306e+00
-R2 theta1: 0.069472
-R2 theta2: 0.070123
-R2 mean: 0.069798
-R2 theta1 extrapolation: 0.009458
-R2 theta2 extrapolation: 0.003737
-R2 extrapolation mean: 0.006598
-Runtime: 00:00:00
+Epoch: 30000
+Loss: 7.597932e-01
+R2 theta1: 0.989276
+R2 theta2: 0.989376
+R2 mean: 0.989326
+R2 theta1 extrapolation: 0.988585
+R2 theta2 extrapolation: 0.988618
+R2 extrapolation mean: 0.988601
+Runtime: 00:02:18

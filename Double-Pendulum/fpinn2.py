@@ -57,7 +57,7 @@ plt.rcParams.update(
         "ytick.labelsize": 8,
         "legend.frameon": False,
         "legend.title_fontsize": 8,
-        "legend.fontsize": 8,
+        "legend.fontsize": 6,
         "legend.handlelength": 2,
         "legend.loc": "best",
         "legend.numpoints": 1,
@@ -73,13 +73,13 @@ plt.rcParams.update(
 # Configuration
 # -----------------------------------------------------------------------------
 DATA_FILE = Path("double_pendulum_data.dat")
-OUTPUT_DIR = Path("./Outputs/fpinn2_005")
+OUTPUT_DIR = Path("./Paper-Images/fpinn2_003")
 OUTPUT_PREFIX = "fpinn2"
 LOG_FILE = OUTPUT_DIR / f"FPINN2.log"
 
 SEED = 0
-EPOCHS = 50_000
-SNAPSHOT_EVERY = 500
+EPOCHS = 30000
+SNAPSHOT_EVERY = 100
 PRINT_EVERY = 1000
 
 # The physical record occupies the first half of the Fourier period.
@@ -419,14 +419,15 @@ def save_time_animation(
     epochs,
 ):
     fig, ax = plt.subplots()
-    ax.plot(t, theta1_reference, color="blue", alpha=0.35, label=r"Numerical $\theta_1$")
-    ax.plot(t, theta2_reference, color="red", alpha=0.35, label=r"Numerical $\theta_2$")
+    ax.plot(t, theta1_reference, color="blue", alpha=0.3, label=r"Numerical $\theta_1$")
+    ax.plot(t, theta2_reference, color="red", alpha=0.3, label=r"Numerical $\theta_2$")
     ax.plot(t[data_indices], theta1_reference[data_indices], "o", color="blue", label=r"Data $\theta_1$")
     ax.plot(t[data_indices], theta2_reference[data_indices], "o", color="red", label=r"Data $\theta_2$")
 
     line1, = ax.plot(t, snapshots[0][:, 0], "--", color="blue", label=r"FPINN $\theta_1$")
     line2, = ax.plot(t, snapshots[0][:, 1], "--", color="red", label=r"FPINN $\theta_2$")
     ax.set(xlabel="Time (s)", ylabel="Angle (rad)")
+    ax.set_title(f"Double Pendulum Fourier PINN - Epoch {epochs[0]}")
     ax.legend(ncol=2)
     title = ax.set_title("")
 
@@ -446,8 +447,8 @@ def save_time_animation(
 
 def save_spectrum_animation(frequencies, reference, snapshots, epochs):
     fig, ax = plt.subplots()
-    ax.plot(frequencies, reference[:, 0], color="blue", alpha=0.35, label=r"FFT $|\Theta_1|$")
-    ax.plot(frequencies, reference[:, 1], color="red", alpha=0.35, label=r"FFT $|\Theta_2|$")
+    ax.plot(frequencies, reference[:, 0], color="blue", alpha=0.3, label=r"FFT $|\Theta_1|$")
+    ax.plot(frequencies, reference[:, 1], color="red", alpha=0.3, label=r"FFT $|\Theta_2|$")
 
     line1, = ax.plot(frequencies, snapshots[0][:, 0], "--", color="blue", label=r"FPINN $|\Theta_1|$")
     line2, = ax.plot(frequencies, snapshots[0][:, 1], "--", color="red", label=r"FPINN $|\Theta_2|$")
@@ -484,27 +485,31 @@ def save_figures(
     history,
 ):
     fig, ax = plt.subplots()
-    ax.plot(t, theta1_reference, color="blue", alpha=0.35, label=r"Numerical $\theta_1$")
-    ax.plot(t, theta2_reference, color="red", alpha=0.35, label=r"Numerical $\theta_2$")
-    ax.plot(t[data_indices], theta1_reference[data_indices], "o", color="blue", label=r"Data $\theta_1$")
-    ax.plot(t[data_indices], theta2_reference[data_indices], "o", color="red", label=r"Data $\theta_2$")
-    ax.plot(t, theta_prediction[:, 0], "--", color="blue", label=r"FPINN $\theta_1$")
-    ax.plot(t, theta_prediction[:, 1], "--", color="red", label=r"FPINN $\theta_2$")
-    ax.set(xlabel="Time (s)", ylabel="Angle (rad)", title="Double Pendulum Fourier PINN")
+    ax.plot(t, theta1_reference, color="blue", ls="-", alpha=0.3, label=r"Numerical $\theta_1$")
+    ax.plot(t[data_indices], theta1_reference[data_indices], "o", color="blue", label=r"Training Data $\theta_1$")
+    ax.plot(t, theta_prediction[:, 0], "-", color="blue", label=r"FPINN $\theta_1$")
+    ax.plot(t, theta2_reference, color="red", ls="-", alpha=0.3, label=r"Numerical $\theta_2$")
+    ax.plot(t[data_indices], theta2_reference[data_indices], "o", color="red", label=r"Training Data $\theta_2$")
+    ax.plot(t, theta_prediction[:, 1], "-", color="red", label=r"FPINN $\theta_2$")
+    ax.set(xlabel="Time (s)", ylabel="Angle (rad)", title=f"Double Pendulum - Time Domain (Epoch {EPOCHS})")
+    ax.set_xlim(0, 20)
+    ax.set_ylim(-1, 1)
     ax.legend(ncol=2)
-    fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_results.png", dpi=600)
+    fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_results.pdf", format="pdf")
     plt.close(fig)
 
     fig, ax = plt.subplots()
-    ax.plot(frequencies, spectrum_reference[:, 0] + 1e-12, color="blue", alpha=0.35, label=r"FFT $|\Theta_1|$")
-    ax.plot(frequencies, spectrum_reference[:, 1] + 1e-12, color="red", alpha=0.35, label=r"FFT $|\Theta_2|$")
-    ax.plot(frequencies, spectrum_prediction[:, 0] + 1e-12, "--", color="blue", label=r"FPINN $|\Theta_1|$")
-    ax.plot(frequencies, spectrum_prediction[:, 1] + 1e-12, "--", color="red", label=r"FPINN $|\Theta_2|$")
-    ax.set(xlabel="Angular frequency (rad/s)", ylabel=r"$|\Theta(\omega)|$", xlim=(0, SPECTRUM_XMAX))
+    ax.plot(frequencies, spectrum_reference[:, 0] + 1e-12, color="blue", alpha=0.3, label=r"Numerical $|\Theta_1|$")
+    ax.plot(frequencies, spectrum_prediction[:, 0] + 1e-12, "-", color="blue", label=r"FPINN $|\Theta_1|$")
+    ax.plot(frequencies, spectrum_reference[:, 1] + 1e-12, color="red", alpha=0.3, label=r"Numerical $|\Theta_2|$")
+    ax.plot(frequencies, spectrum_prediction[:, 1] + 1e-12, "-", color="red", label=r"FPINN $|\Theta_2|$")
+    ax.set(xlabel="Angular frequency (rad/s)", ylabel=r"Magnitude", xlim=(0, SPECTRUM_XMAX), title=f"Double Pendulum - Frequency Spectrum (Epoch {EPOCHS})")
+    ax.set_xlim(0, 20)
+    ax.set_ylim(0, 0.5)
     if SPECTRUM_YMAX is not None:
         ax.set_ylim(0, SPECTRUM_YMAX)
     ax.legend(ncol=2)
-    fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_spectrum.png", dpi=600)
+    fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_spectrum.pdf", format="pdf")
     plt.close(fig)
 
     epoch_axis = np.arange(len(history["total"]))
@@ -514,9 +519,9 @@ def save_figures(
     ax.semilogy(epoch_axis, history["physics"], color="red", label="Physics Loss")
     ax.semilogy(epoch_axis, history["initial"], color="green", label="Initial Condition Loss")
     ax.semilogy(epoch_axis, history["energy"], color="purple", label="Energy Loss")
-    ax.set(xlabel="Epochs", ylabel="Loss", title="Loss Convergence")
+    ax.set(xlabel="Epochs", ylabel="Loss", title=f"Loss Convergence (Epoch {EPOCHS})")
     ax.legend()
-    fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_loss.png", dpi=600)
+    fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_loss.pdf", format="pdf")
     plt.close(fig)
 
 
@@ -618,8 +623,8 @@ def main():
     spectrum_plot_mask = plot_frequencies <= SPECTRUM_XMAX
     spectrum_reference = np.column_stack(
         (
-            np.abs(np.fft.rfft(theta1_ref) / n_time),
-            np.abs(np.fft.rfft(theta2_ref) / n_time),
+            2*np.abs(np.fft.rfft(theta1_ref) / n_time),
+            2*np.abs(np.fft.rfft(theta2_ref) / n_time),
         )
     )
 
@@ -698,7 +703,7 @@ def main():
             time_snapshots.append(theta_now.cpu().numpy().copy())
             theta_snapshot = theta_now.cpu().numpy()
             spectrum_snapshots.append(
-                np.abs(np.fft.rfft(theta_snapshot, axis=0) / n_time)[
+                2*np.abs(np.fft.rfft(theta_snapshot, axis=0) / n_time)[
                     spectrum_plot_mask
                 ].copy()
             )
@@ -711,7 +716,7 @@ def main():
         )
 
     theta_final = theta_final.cpu().numpy()
-    spectrum_final = np.abs(np.fft.rfft(theta_final, axis=0) / n_time)
+    spectrum_final = 2*np.abs(np.fft.rfft(theta_final, axis=0) / n_time)
 
     r2_1 = coefficient_of_determination(theta1_ref, theta_final[:, 0])
     r2_2 = coefficient_of_determination(theta2_ref, theta_final[:, 1])

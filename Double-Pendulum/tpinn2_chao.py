@@ -63,7 +63,7 @@ plt.rcParams.update(
         "ytick.labelsize": 8,
         "legend.frameon": False,
         "legend.title_fontsize": 8,
-        "legend.fontsize": 8,
+        "legend.fontsize": 6,
         "legend.handlelength": 2,
         "legend.loc": "best",
         "legend.numpoints": 1,
