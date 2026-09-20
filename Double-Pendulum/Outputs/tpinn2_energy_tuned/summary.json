@@ -1,0 +1,22 @@
+{
+  "r2": [
+    0.9522605526558175,
+    0.9540695909162857
+  ],
+  "epoch": 30000,
+  "seconds": 179.57766854198417,
+  "parameters": {
+    "LAMBDA_ENERGY": 1.0,
+    "LEARNING_RATE": 0.0005,
+    "PHYSICS_EXPANSION_EPOCHS": 10000,
+    "LR_MILESTONES": [
+      15000,
+      24000,
+      28000
+    ],
+    "LR_DECAY": 0.5,
+    "LAMBDA_PHYSICS": 1000.0,
+    "WARMUP_EPOCHS": 0,
+    "PHYSICS_RAMP_EPOCHS": 1000
+  }
+}

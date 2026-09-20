@@ -25,7 +25,4 @@ Loss: 8.224306e+00
 R2 theta1: 0.069472
 R2 theta2: 0.070123
 R2 mean: 0.069798
-R2 theta1 extrapolation: 0.009458
-R2 theta2 extrapolation: 0.003737
-R2 extrapolation mean: 0.006598
-Runtime: 00:00:00
+Runtime: 00:00:01

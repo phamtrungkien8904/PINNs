@@ -90,10 +90,10 @@ LOG_FILE = OUTPUT_DIR / "TPINN2.log"
 
 RUN_NAME = "Double Pendulum Time PINN"
 SEED = 0
-EPOCHS = 30_000
-PRINT_EVERY = 100
+EPOCHS = 50_000
+PRINT_EVERY = 1_000
 EVALUATE_EVERY = 1_000
-SNAPSHOT_EVERY = 100
+SNAPSHOT_EVERY = 500
 HISTORY_EVERY = 100
 GIF_FPS = 30
 
@@ -101,37 +101,38 @@ GIF_FPS = 30
 DATA_STOP = 300
 DATA_STEP = 30
 
-# Collocation grid expands with the active physics interval.
-PHYSICS_POINTS = 1024
-# Tuned for the observed interval; full-record extrapolation is not converged.
+# Fixed full-domain collocation grid, as in the archived run.
+PHYSICS_POINTS = 512
+# Settings recovered from Outputs/tpinn2_001 and source revision 0e31c9b.
 STATE_SCALE = (0.6, 0.6, 2.0, 2.0)
 IC_TIME_SCALE = 1.0
+FIRST_LAYER_OMEGA = 60.0
 
-LEARNING_RATE = 3e-4
-WEIGHT_DECAY = 0.0
+LEARNING_RATE = 2e-4
+WEIGHT_DECAY = 1e-8
 GRADIENT_CLIP = 1.0
-LR_MILESTONES = (15_000, 24_000, 28_000)
+LR_MILESTONES = (50_000, 80_000, 95_000)
 LR_DECAY = 0.3
 
-WARMUP_EPOCHS = 500
-PHYSICS_RAMP_EPOCHS = 2_000
-PHYSICS_EXPANSION_EPOCHS = 15_000
+WARMUP_EPOCHS = 2_000
+PHYSICS_RAMP_EPOCHS = 10_000
+PHYSICS_EXPANSION_EPOCHS = 30_000
 
-LAMBDA_DATA = 1000.0
-LAMBDA_PHYSICS = 1000.0
-LAMBDA_INITIAL = 500.0
-LAMBDA_ENERGY = 1.0
+LAMBDA_DATA = 1e3
+LAMBDA_PHYSICS = 1e3
+LAMBDA_INITIAL = 5e2
+LAMBDA_ENERGY = 0.0
 VELOCITY_SCALE = np.sqrt(10.0)
 ACCELERATION_SCALE = 10.0
 
 # Stop when a stable, physics-consistent fit is reached.
 EARLY_STOP = False
-EARLY_STOP_MIN_EPOCH = 25_000
+EARLY_STOP_MIN_EPOCH = 35_000
 EARLY_STOP_R2 = 0.999
 EARLY_STOP_PHYSICS = 1e-5
 EARLY_STOP_PATIENCE = 3
 
-CPU_THREADS = 1
+CPU_THREADS = 4
 REQUIRE_CUDA = False
 GPU_INDEX = 0
 USE_TF32 = True
@@ -181,6 +182,23 @@ def coefficient_of_determination(reference, prediction):
 # -----------------------------------------------------------------------------
 # Time-domain state network
 # -----------------------------------------------------------------------------
+class SineLayer(nn.Module):
+    def __init__(self, in_features, out_features, omega0=1.0, first=False):
+        super().__init__()
+        self.omega0 = omega0
+        self.linear = nn.Linear(in_features, out_features)
+        with torch.no_grad():
+            if first:
+                bound = 1.0 / in_features
+            else:
+                bound = np.sqrt(6.0 / in_features) / omega0
+            self.linear.weight.uniform_(-bound, bound)
+            self.linear.bias.uniform_(-bound, bound)
+
+    def forward(self, x):
+        return torch.sin(self.omega0 * self.linear(x))
+
+
 class DoublePendulumStatePINN(nn.Module):
     """Map time to [theta1, theta2, omega1, omega2] with exact initial state."""
 
@@ -197,21 +215,17 @@ class DoublePendulumStatePINN(nn.Module):
             torch.tensor(STATE_SCALE, dtype=torch.float32)[None, :],
         )
 
-        self.network = nn.Sequential(
-            nn.Linear(1, 128),
-            nn.Tanh(),
-            nn.Linear(128, 128),
-            nn.Tanh(),
-            nn.Linear(128, 128),
-            nn.Tanh(),
-            nn.Linear(128, 128),
-            nn.Tanh(),
-            nn.Linear(128, 128),
-            nn.Tanh(),
-            nn.Linear(128, 128),
-            nn.Tanh(),
-            nn.Linear(128, 4),
-        )
+        # Four 128-node sine layers from the archived tpinn2_001 configuration.
+        first = SineLayer(1, 128, omega0=FIRST_LAYER_OMEGA, first=True)
+        hidden2 = SineLayer(128, 128)
+        hidden3 = SineLayer(128, 128)
+        hidden4 = SineLayer(128, 128)
+        final_layer = nn.Linear(128, 4)
+        with torch.no_grad():
+            bound = np.sqrt(6.0 / 128)
+            final_layer.weight.uniform_(-bound, bound)
+            final_layer.bias.zero_()
+        self.network = nn.Sequential(first, hidden2, hidden3, hidden4, final_layer)
 
     def forward(self, t):
         normalized_time = 2.0 * (t - self.time_min) / self.time_span - 1.0
@@ -362,8 +376,10 @@ def save_log(
         f"Data step: {DATA_STEP}",
         f"Physics points: {PHYSICS_POINTS}",
         "Network width: 128",
-        "Hidden layers: 6",
+        "Hidden layers: 4",
+        "Activation: sine",
         f"Learning rate: {LEARNING_RATE}",
+        f"First layer omega: {FIRST_LAYER_OMEGA}",
         f"Lambda data: {LAMBDA_DATA}",
         f"Lambda physics: {LAMBDA_PHYSICS}",
         f"Lambda initial: {LAMBDA_INITIAL}",
@@ -430,11 +446,10 @@ def save_r2_error(history):
         error = np.where(np.isfinite(error) & (error >= 0),
                          np.maximum(error, np.finfo(float).eps), np.nan)
         axis.semilogy(values[:, 0], error, color=color, ls="-", label=label)
-    axis.set(xlabel="Epochs (completed updates)", ylabel=r"$1 - R^2$",
-             title="TPINN R-squared convergence (full record)")
+    axis.set(xlabel="Epochs", ylabel=r"$1 - R^2$",
+             title="TPINN R-squared convergence")
     axis.legend(ncol=2)
     fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_r2_error.pdf", format="pdf")
-    fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_r2_error.png", dpi=600)
     plt.close(fig)
 
 
@@ -560,9 +575,8 @@ def main():
     data_indices = np.arange(0, data_stop, DATA_STEP)
     measured_stop = float(t_reference[data_stop - 1])
 
-    # The data generator specifies release from rest; no dense labels are
-    # differentiated to infer training initial velocities.
-    initial_state = np.concatenate((theta_reference[0], [0.0, 0.0]))
+    # Restore the archived run's supplied/finite-difference initial velocities.
+    initial_state = np.concatenate((theta_reference[0], omega_reference[0]))
     model = DoublePendulumStatePINN(
         t_reference[0],
         t_reference[-1],
@@ -591,6 +605,10 @@ def main():
     theta_data = torch.tensor(
         theta_reference[data_indices], dtype=torch.float32, device=device
     )
+    time_physics = torch.linspace(
+        float(t_reference[0]), float(t_reference[-1]), PHYSICS_POINTS,
+        dtype=torch.float32, device=device,
+    )[:, None]
     time_evaluation = torch.tensor(
         t_reference, dtype=torch.float32, device=device
     )[:, None]
@@ -609,7 +627,7 @@ def main():
         print(f"CPU threads: {torch.get_num_threads()}")
     print(f"Maximum epochs: {EPOCHS}")
     print(f"Physics points: {PHYSICS_POINTS}")
-    print("Network: 1 -> 128 -> 128 -> 128 -> 128 -> 128 -> 128 -> 4 (Tanh)")
+    print("Network: 1 -> 128 -> 128 -> 128 -> 128 -> 4 (sine)")
     print(f"Fused AdamW: {fused_optimizer}")
     print(f"torch.compile: {compiled}")
 
@@ -634,10 +652,6 @@ def main():
             measured_stop,
             float(t_reference[-1]),
         )
-        time_physics = torch.linspace(
-            float(t_reference[0]), physics_stop, PHYSICS_POINTS,
-            dtype=torch.float32, device=device,
-        )[:, None]
         physics_loss = physics_loss_on_grid(model, time_physics, physics_stop)
         initial_loss = initial_condition_loss(model, time_initial, state_initial)
         energy_loss = energy_loss_on_grid(model, time_physics, energy_initial)

@@ -79,8 +79,8 @@ OUTPUT_PREFIX = "fpinn2"
 LOG_FILE = OUTPUT_DIR / f"FPINN2.log"
 
 SEED = 0
-EPOCHS = 30000
-SNAPSHOT_EVERY = 100
+EPOCHS = 50000
+SNAPSHOT_EVERY = 1000
 PRINT_EVERY = 1000
 
 # The physical record occupies the first half of the Fourier period.
@@ -480,11 +480,11 @@ def save_r2_error(history):
         error = np.where(np.isfinite(error) & (error >= 0),
                          np.maximum(error, np.finfo(float).eps), np.nan)
         axis.semilogy(values[:, 0], error, color=color, ls="-", label=label)
-    axis.set(xlabel="Epochs (completed updates)", ylabel=r"$1 - R^2$",
-             title="FPINN R-squared convergence (full record)")
+    axis.set(xlabel="Epochs", ylabel=r"$1 - R^2$",
+             title="FPINN R-squared convergence")
+    axis.set_xlim(0, EPOCHS)
     axis.legend(ncol=2)
     fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_r2_error.pdf", format="pdf")
-    fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_r2_error.png", dpi=600)
     plt.close(fig)
 
 
