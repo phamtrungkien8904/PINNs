@@ -1,5 +1,6 @@
 from pathlib import Path
 import time
+import csv
 
 import matplotlib
 matplotlib.use("Agg")
@@ -94,7 +95,7 @@ WARMUP_EPOCHS = 0
 PHYSICS_RAMP_EPOCHS = 1
 
 # Fixed training data: 10 measurements over 0-2.7 s.
-# Evaluate extrapolation from 3 s; do not expand this training window.
+# R2 uses the full reference record; do not expand this training window.
 DATA_STOP = 300
 DATA_STEP = 30
 
@@ -370,8 +371,6 @@ def save_log(
     loss,
     r2_1,
     r2_2,
-    r2_1_extra,
-    r2_2_extra,
     runtime,
 ):
     log_lines = [
@@ -402,9 +401,6 @@ def save_log(
         f"R2 theta1: {r2_1:.6f}",
         f"R2 theta2: {r2_2:.6f}",
         f"R2 mean: {0.5 * (r2_1 + r2_2):.6f}",
-        f"R2 theta1 extrapolation: {r2_1_extra:.6f}",
-        f"R2 theta2 extrapolation: {r2_2_extra:.6f}",
-        f"R2 extrapolation mean: {0.5 * (r2_1_extra + r2_2_extra):.6f}",
         f"Runtime: {runtime}",
     ]
     LOG_FILE.write_text("\n".join(log_lines) + "\n", encoding="utf-8")
@@ -419,8 +415,8 @@ def save_time_animation(
     epochs,
 ):
     fig, ax = plt.subplots()
-    ax.plot(t, theta1_reference, color="blue", alpha=0.3, label=r"Numerical $\theta_1$")
-    ax.plot(t, theta2_reference, color="red", alpha=0.3, label=r"Numerical $\theta_2$")
+    ax.plot(t, theta1_reference, color="blue", ls = "--", alpha=0.3, label=r"Numerical $\theta_1$")
+    ax.plot(t, theta2_reference, color="red", ls = "--", alpha=0.3, label=r"Numerical $\theta_2$")
     ax.plot(t[data_indices], theta1_reference[data_indices], "o", color="blue", label=r"Data $\theta_1$")
     ax.plot(t[data_indices], theta2_reference[data_indices], "o", color="red", label=r"Data $\theta_2$")
 
@@ -473,6 +469,25 @@ def save_spectrum_animation(frequencies, reference, snapshots, epochs):
     plt.close(fig)
 
 
+def save_r2_error(history):
+    """Plot checkpoint errors; exact zero is displayed at machine epsilon."""
+    values = np.asarray(history, dtype=float)
+    fig, axis = plt.subplots()
+    labels = (r"$\theta_1$", r"$\theta_2$")
+    for column, color, label in zip(range(1, 3), ("blue", "red"), labels):
+        error = 1.0 - values[:, column]
+        # Leave invalid scores as gaps, rather than showing false convergence.
+        error = np.where(np.isfinite(error) & (error >= 0),
+                         np.maximum(error, np.finfo(float).eps), np.nan)
+        axis.semilogy(values[:, 0], error, color=color, ls="-", label=label)
+    axis.set(xlabel="Epochs (completed updates)", ylabel=r"$1 - R^2$",
+             title="FPINN R-squared convergence (full record)")
+    axis.legend(ncol=2)
+    fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_r2_error.pdf", format="pdf")
+    fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_r2_error.png", dpi=600)
+    plt.close(fig)
+
+
 def save_figures(
     t,
     theta1_reference,
@@ -485,10 +500,10 @@ def save_figures(
     history,
 ):
     fig, ax = plt.subplots()
-    ax.plot(t, theta1_reference, color="blue", ls="-", alpha=0.3, label=r"Numerical $\theta_1$")
+    ax.plot(t, theta1_reference, color="blue", ls="--", alpha=0.3, label=r"Numerical $\theta_1$")
     ax.plot(t[data_indices], theta1_reference[data_indices], "o", color="blue", label=r"Training Data $\theta_1$")
     ax.plot(t, theta_prediction[:, 0], "-", color="blue", label=r"FPINN $\theta_1$")
-    ax.plot(t, theta2_reference, color="red", ls="-", alpha=0.3, label=r"Numerical $\theta_2$")
+    ax.plot(t, theta2_reference, color="red", ls="--", alpha=0.3, label=r"Numerical $\theta_2$")
     ax.plot(t[data_indices], theta2_reference[data_indices], "o", color="red", label=r"Training Data $\theta_2$")
     ax.plot(t, theta_prediction[:, 1], "-", color="red", label=r"FPINN $\theta_2$")
     ax.set(xlabel="Time (s)", ylabel="Angle (rad)", title=f"Double Pendulum - Time Domain (Epoch {EPOCHS})")
@@ -499,9 +514,9 @@ def save_figures(
     plt.close(fig)
 
     fig, ax = plt.subplots()
-    ax.plot(frequencies, spectrum_reference[:, 0] + 1e-12, color="blue", alpha=0.3, label=r"Numerical $|\Theta_1|$")
+    ax.plot(frequencies, spectrum_reference[:, 0] + 1e-12, color="blue", ls="--", alpha=0.3, label=r"Numerical $|\Theta_1|$")
     ax.plot(frequencies, spectrum_prediction[:, 0] + 1e-12, "-", color="blue", label=r"FPINN $|\Theta_1|$")
-    ax.plot(frequencies, spectrum_reference[:, 1] + 1e-12, color="red", alpha=0.3, label=r"Numerical $|\Theta_2|$")
+    ax.plot(frequencies, spectrum_reference[:, 1] + 1e-12, color="red", ls="--", alpha=0.3, label=r"Numerical $|\Theta_2|$")
     ax.plot(frequencies, spectrum_prediction[:, 1] + 1e-12, "-", color="red", label=r"FPINN $|\Theta_2|$")
     ax.set(xlabel="Angular frequency (rad/s)", ylabel=r"Magnitude", xlim=(0, SPECTRUM_XMAX), title=f"Double Pendulum - Frequency Spectrum (Epoch {EPOCHS})")
     ax.set_xlim(0, 20)
@@ -615,6 +630,7 @@ def main():
     history = {
         name: [] for name in ("total", "data", "physics", "initial", "energy")
     }
+    r2_history = []
     snapshot_epochs = []
     time_snapshots = []
     spectrum_snapshots = []
@@ -702,6 +718,11 @@ def main():
             snapshot_epochs.append(epoch)
             time_snapshots.append(theta_now.cpu().numpy().copy())
             theta_snapshot = theta_now.cpu().numpy()
+            r2_history.append((
+                epoch + 1,
+                coefficient_of_determination(theta1_ref, theta_snapshot[:, 0]),
+                coefficient_of_determination(theta2_ref, theta_snapshot[:, 1]),
+            ))
             spectrum_snapshots.append(
                 2*np.abs(np.fft.rfft(theta_snapshot, axis=0) / n_time)[
                     spectrum_plot_mask
@@ -721,20 +742,18 @@ def main():
     r2_1 = coefficient_of_determination(theta1_ref, theta_final[:, 0])
     r2_2 = coefficient_of_determination(theta2_ref, theta_final[:, 1])
     r2_mean = 0.5 * (r2_1 + r2_2)
-    extrapolation_start = min(data_stop, n_time - 1)
-    r2_1_extra = coefficient_of_determination(
-        theta1_ref[extrapolation_start:], theta_final[extrapolation_start:, 0]
-    )
-    r2_2_extra = coefficient_of_determination(
-        theta2_ref[extrapolation_start:], theta_final[extrapolation_start:, 1]
-    )
+    if not r2_history or r2_history[-1][0] != epoch + 1:
+        r2_history.append((epoch + 1, r2_1, r2_2))
+    with (OUTPUT_DIR / f"{OUTPUT_PREFIX}_r2_history.csv").open("w", newline="") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(("optimizer_updates", "r2_theta1", "r2_theta2"))
+        writer.writerows(r2_history)
+    save_r2_error(r2_history)
 
     runtime = format_time(time.time() - start_time)
     print(f"\nR^2 theta1: {r2_1:.6f}")
     print(f"R^2 theta2: {r2_2:.6f}")
     print(f"R^2 mean:   {r2_mean:.6f}")
-    print(f"R^2 theta1 extrapolation: {r2_1_extra:.6f}")
-    print(f"R^2 theta2 extrapolation: {r2_2_extra:.6f}")
     print(f"Runtime: {runtime}")
 
     save_log(
@@ -745,8 +764,6 @@ def main():
         loss=total_loss.item(),
         r2_1=r2_1,
         r2_2=r2_2,
-        r2_1_extra=r2_1_extra,
-        r2_2_extra=r2_2_extra,
         runtime=runtime,
     )
 

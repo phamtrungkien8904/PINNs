@@ -13,6 +13,7 @@ training animation under Outputs/tpinn2.
 
 from pathlib import Path
 import time
+import csv
 
 import matplotlib
 matplotlib.use("Agg")
@@ -66,7 +67,7 @@ plt.rcParams.update(
         "ytick.labelsize": 8,
         "legend.frameon": False,
         "legend.title_fontsize": 8,
-        "legend.fontsize": 8,
+        "legend.fontsize": 6,
         "legend.handlelength": 2,
         "legend.loc": "best",
         "legend.numpoints": 1,
@@ -89,51 +90,48 @@ LOG_FILE = OUTPUT_DIR / "TPINN2.log"
 
 RUN_NAME = "Double Pendulum Time PINN"
 SEED = 0
-EPOCHS = 180_000
-PRINT_EVERY = 1_000
+EPOCHS = 30_000
+PRINT_EVERY = 100
 EVALUATE_EVERY = 1_000
-SNAPSHOT_EVERY = 1_000
+SNAPSHOT_EVERY = 100
 HISTORY_EVERY = 100
 GIF_FPS = 30
 
-# Use the same sparse-data experiment as fpinn2.py: 30 samples over 0-2.9 s.
-DATA_STOP = 1001
-DATA_STEP = 1
+# Same sparse-data experiment as fpinn2.py: 10 samples over 0-2.7 s.
+DATA_STOP = 300
+DATA_STEP = 30
 
-# A 1024-point grid resolves the highest relevant trajectory frequency while
-# keeping the CPU comparison inexpensive.
-PHYSICS_POINTS = 2048
-NETWORK_WIDTH = 64
-NETWORK_DEPTH = 3
-FIRST_LAYER_OMEGA = 60.0
-STATE_SCALE = (3.0, 40.0, 12.0, 20.0)
+# Collocation grid expands with the active physics interval.
+PHYSICS_POINTS = 1024
+# Tuned for the observed interval; full-record extrapolation is not converged.
+STATE_SCALE = (0.6, 0.6, 2.0, 2.0)
 IC_TIME_SCALE = 1.0
 
 LEARNING_RATE = 3e-4
 WEIGHT_DECAY = 0.0
 GRADIENT_CLIP = 1.0
-LR_MILESTONES = (140_000, 160_000, 175_000)
-LR_DECAY = 0.5
+LR_MILESTONES = (15_000, 24_000, 28_000)
+LR_DECAY = 0.3
 
-WARMUP_EPOCHS = 5_000
-PHYSICS_RAMP_EPOCHS = 15_000
-PHYSICS_EXPANSION_EPOCHS = 140_000
+WARMUP_EPOCHS = 500
+PHYSICS_RAMP_EPOCHS = 2_000
+PHYSICS_EXPANSION_EPOCHS = 15_000
 
 LAMBDA_DATA = 1000.0
 LAMBDA_PHYSICS = 1000.0
-LAMBDA_INITIAL = 5e2
-LAMBDA_ENERGY = 0.0
+LAMBDA_INITIAL = 500.0
+LAMBDA_ENERGY = 1.0
 VELOCITY_SCALE = np.sqrt(10.0)
 ACCELERATION_SCALE = 10.0
 
 # Stop when a stable, physics-consistent fit is reached.
 EARLY_STOP = False
-EARLY_STOP_MIN_EPOCH = 35_000
+EARLY_STOP_MIN_EPOCH = 25_000
 EARLY_STOP_R2 = 0.999
 EARLY_STOP_PHYSICS = 1e-5
 EARLY_STOP_PATIENCE = 3
 
-CPU_THREADS = 4
+CPU_THREADS = 1
 REQUIRE_CUDA = False
 GPU_INDEX = 0
 USE_TF32 = True
@@ -183,23 +181,6 @@ def coefficient_of_determination(reference, prediction):
 # -----------------------------------------------------------------------------
 # Time-domain state network
 # -----------------------------------------------------------------------------
-class SineLayer(nn.Module):
-    def __init__(self, in_features, out_features, omega0=1.0, first=False):
-        super().__init__()
-        self.omega0 = omega0
-        self.linear = nn.Linear(in_features, out_features)
-        with torch.no_grad():
-            if first:
-                bound = 1.0 / in_features
-            else:
-                bound = np.sqrt(6.0 / in_features) / omega0
-            self.linear.weight.uniform_(-bound, bound)
-            self.linear.bias.uniform_(-bound, bound)
-
-    def forward(self, x):
-        return torch.sin(self.omega0 * self.linear(x))
-
-
 class DoublePendulumStatePINN(nn.Module):
     """Map time to [theta1, theta2, omega1, omega2] with exact initial state."""
 
@@ -216,24 +197,21 @@ class DoublePendulumStatePINN(nn.Module):
             torch.tensor(STATE_SCALE, dtype=torch.float32)[None, :],
         )
 
-        layers = [
-            SineLayer(
-                1,
-                NETWORK_WIDTH,
-                omega0=FIRST_LAYER_OMEGA,
-                first=True,
-            )
-        ]
-        for _ in range(NETWORK_DEPTH - 1):
-            layers.append(SineLayer(NETWORK_WIDTH, NETWORK_WIDTH))
-
-        final_layer = nn.Linear(NETWORK_WIDTH, 4)
-        with torch.no_grad():
-            bound = np.sqrt(6.0 / NETWORK_WIDTH)
-            final_layer.weight.uniform_(-bound, bound)
-            final_layer.bias.zero_()
-        layers.append(final_layer)
-        self.network = nn.Sequential(*layers)
+        self.network = nn.Sequential(
+            nn.Linear(1, 128),
+            nn.Tanh(),
+            nn.Linear(128, 128),
+            nn.Tanh(),
+            nn.Linear(128, 128),
+            nn.Tanh(),
+            nn.Linear(128, 128),
+            nn.Tanh(),
+            nn.Linear(128, 128),
+            nn.Tanh(),
+            nn.Linear(128, 128),
+            nn.Tanh(),
+            nn.Linear(128, 4),
+        )
 
     def forward(self, t):
         normalized_time = 2.0 * (t - self.time_min) / self.time_span - 1.0
@@ -280,6 +258,30 @@ def state_rhs(state):
     acceleration1 = numerator1 / denominator1
     acceleration2 = numerator2 / denominator2
     return torch.cat((omega1, omega2, acceleration1, acceleration2), dim=1)
+
+
+def mechanical_energy(state):
+    """Total mechanical energy, using the same angle convention as fpinn2."""
+    theta1, theta2, omega1, omega2 = state.unbind(dim=1)
+    kinetic = (
+        0.5 * (m1 + m2) * l1**2 * omega1**2
+        + 0.5 * m2 * l2**2 * omega2**2
+        + m2 * l1 * l2 * omega1 * omega2 * torch.cos(theta1 - theta2)
+    )
+    potential = -(m1 + m2) * g * l1 * torch.cos(theta1) - m2 * g * l2 * torch.cos(theta2)
+    return kinetic + potential
+
+
+def initial_condition_loss(model, time_initial, state_initial):
+    # Exact initial-state enforcement makes this zero for the current model.
+    state = model(time_initial)
+    return ((state[:, :2] - state_initial[:, :2])**2).mean() + (
+        (state[:, 2:] - state_initial[:, 2:])**2
+    ).mean()
+
+
+def energy_loss_on_grid(model, time_grid, energy_initial):
+    return ((mechanical_energy(model(time_grid)) - energy_initial)**2).mean()
 
 
 def fourth_order_derivative(values, step):
@@ -344,7 +346,8 @@ def save_log(
     data_loss,
     physics_loss,
     r2_all,
-    r2_extra,
+    initial_loss,
+    energy_loss,
 ):
     gpu_name = (
         torch.cuda.get_device_name(device) if device.type == "cuda" else "None"
@@ -358,23 +361,24 @@ def save_log(
         f"Data stop: {DATA_STOP}",
         f"Data step: {DATA_STEP}",
         f"Physics points: {PHYSICS_POINTS}",
-        f"Network width: {NETWORK_WIDTH}",
-        f"Network depth: {NETWORK_DEPTH}",
+        "Network width: 128",
+        "Hidden layers: 6",
         f"Learning rate: {LEARNING_RATE}",
         f"Lambda data: {LAMBDA_DATA}",
         f"Lambda physics: {LAMBDA_PHYSICS}",
+        f"Lambda initial: {LAMBDA_INITIAL}",
+        f"Lambda energy: {LAMBDA_ENERGY}",
         f"Maximum epochs: {EPOCHS}",
         f"Epoch: {epoch}",
         f"Runtime: {runtime}",
         f"Loss: {total_loss:.6e}",
         f"Data loss: {data_loss:.6e}",
         f"Physics loss: {physics_loss:.6e}",
+        f"Initial loss: {initial_loss:.6e}",
+        f"Energy loss: {energy_loss:.6e}",
         f"R2 theta1: {r2_all[0]:.6f}",
         f"R2 theta2: {r2_all[1]:.6f}",
         f"R2 mean: {np.mean(r2_all):.6f}",
-        f"R2 theta1 extrapolation: {r2_extra[0]:.6f}",
-        f"R2 theta2 extrapolation: {r2_extra[1]:.6f}",
-        f"R2 extrapolation mean: {np.mean(r2_extra):.6f}",
     ]
     LOG_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -385,7 +389,7 @@ def configure_prediction_axes(axis, time_reference, theta_reference, data_indice
         label = rf"$\theta_{component + 1}$"
         axis.plot(
             time_reference, theta_reference[:, component],
-            color=color, alpha=0.35, label=f"Numerical {label}",
+            color=color, alpha=0.3, label=f"Numerical {label}",
         )
         axis.plot(
             time_reference[data_indices], theta_reference[data_indices, component],
@@ -394,17 +398,43 @@ def configure_prediction_axes(axis, time_reference, theta_reference, data_indice
     axis.set(xlabel="Time (s)", ylabel="Angle (rad)")
 
 
-def save_results(time_reference, theta_reference, data_indices, prediction):
+def save_results(time_reference, theta_reference, data_indices, prediction, epoch=None):
+    if epoch is None:
+        epoch = EPOCHS
     fig, axis = plt.subplots()
-    configure_prediction_axes(axis, time_reference, theta_reference, data_indices)
     for component, color in enumerate(("blue", "red")):
-        axis.plot(
-            time_reference, prediction[:, component], "--", color=color,
-            label=rf"TPINN $\theta_{component + 1}$",
-        )
+        label = rf"$\theta_{component + 1}$"
+        axis.plot(time_reference, theta_reference[:, component], color=color,
+                  ls="--", alpha=0.3, label=f"Numerical {label}")
+        axis.plot(time_reference[data_indices], theta_reference[data_indices, component],
+                  "o", color=color, label=f"Training Data {label}")
+        axis.plot(time_reference, prediction[:, component], "-", color=color,
+                  label=f"TPINN {label}")
+    axis.set(xlabel="Time (s)", ylabel="Angle (rad)",
+             title=f"Double Pendulum - Time Domain (Epoch {epoch})",
+             xlim=(0, 20), ylim=(-1, 1))
     axis.legend(ncol=2)
-    axis.set_title("Double Pendulum Time PINN")
+    fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_results.pdf", format="pdf")
     fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_results.png", dpi=600)
+    plt.close(fig)
+
+
+def save_r2_error(history):
+    """Plot checkpoint errors; exact zero is displayed at machine epsilon."""
+    values = np.asarray(history, dtype=float)
+    fig, axis = plt.subplots()
+    labels = (r"$\theta_1$", r"$\theta_2$")
+    for column, color, label in zip(range(1, 3), ("blue", "red"), labels):
+        error = 1.0 - values[:, column]
+        # Leave invalid scores as gaps, rather than showing false convergence.
+        error = np.where(np.isfinite(error) & (error >= 0),
+                         np.maximum(error, np.finfo(float).eps), np.nan)
+        axis.semilogy(values[:, 0], error, color=color, ls="-", label=label)
+    axis.set(xlabel="Epochs (completed updates)", ylabel=r"$1 - R^2$",
+             title="TPINN R-squared convergence (full record)")
+    axis.legend(ncol=2)
+    fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_r2_error.pdf", format="pdf")
+    fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_r2_error.png", dpi=600)
     plt.close(fig)
 
 
@@ -414,8 +444,13 @@ def save_loss(history):
     axis.semilogy(epochs, history["total"], color="black", label="Total Loss")
     axis.semilogy(epochs, history["data"], color="blue", label="Data Loss")
     axis.semilogy(epochs, history["physics"], color="red", label="Physics Loss")
-    axis.set(xlabel="Epochs", ylabel="Loss", title="Loss Convergence")
+    axis.semilogy(epochs, np.maximum(history["initial"], 1e-16), color="green",
+                  label="Initial Condition Loss")
+    axis.semilogy(epochs, history["energy"], color="purple", label="Energy Loss")
+    axis.set(xlabel="Epochs", ylabel="Loss",
+             title=f"Loss Convergence (Epoch {epochs[-1]})")
     axis.legend()
+    fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_loss.pdf", format="pdf")
     fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_loss.png", dpi=600)
     plt.close(fig)
 
@@ -498,32 +533,36 @@ def create_optimizer(model, device):
     return optimizer, fused
 
 
-def evaluate(model, time_tensor, theta_reference, extrapolation_start):
+def evaluate(model, time_tensor, theta_reference):
     model.eval()
     with torch.inference_mode():
         theta_prediction = model(time_tensor)[:, :2].cpu().numpy()
     model.train()
 
     r2_all = coefficient_of_determination(theta_reference, theta_prediction)
-    r2_extra = coefficient_of_determination(
-        theta_reference[extrapolation_start:],
-        theta_prediction[extrapolation_start:],
-    )
-    return r2_all, r2_extra, theta_prediction
+    return r2_all, theta_prediction
 
 
 def main():
+    if not isinstance(EPOCHS, int) or EPOCHS < 1:
+        raise ValueError("EPOCHS must be a positive integer.")
+    if not isinstance(DATA_STEP, int) or DATA_STEP < 1:
+        raise ValueError("DATA_STEP must be a positive integer.")
     torch.manual_seed(SEED)
     np.random.seed(SEED)
     device = select_device()
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     t_reference, theta_reference, omega_reference = load_data(DATA_FILE)
-    data_stop = min(DATA_STOP, len(t_reference))
+    if not isinstance(DATA_STOP, int) or not 1 < DATA_STOP <= len(t_reference) - 2:
+        raise ValueError("DATA_STOP must leave at least two extrapolation samples.")
+    data_stop = DATA_STOP
     data_indices = np.arange(0, data_stop, DATA_STEP)
     measured_stop = float(t_reference[data_stop - 1])
 
-    initial_state = np.concatenate((theta_reference[0], omega_reference[0]))
+    # The data generator specifies release from rest; no dense labels are
+    # differentiated to infer training initial velocities.
+    initial_state = np.concatenate((theta_reference[0], [0.0, 0.0]))
     model = DoublePendulumStatePINN(
         t_reference[0],
         t_reference[-1],
@@ -552,16 +591,13 @@ def main():
     theta_data = torch.tensor(
         theta_reference[data_indices], dtype=torch.float32, device=device
     )
-    time_physics = torch.linspace(
-        float(t_reference[0]),
-        float(t_reference[-1]),
-        PHYSICS_POINTS,
-        dtype=torch.float32,
-        device=device,
-    )[:, None]
     time_evaluation = torch.tensor(
         t_reference, dtype=torch.float32, device=device
     )[:, None]
+
+    time_initial = time_evaluation[:1]
+    state_initial = torch.tensor(initial_state, dtype=torch.float32, device=device)[None, :]
+    energy_initial = mechanical_energy(state_initial).detach()
 
     print(f"Name: {RUN_NAME}")
     print(f"Using device: {device}")
@@ -573,7 +609,7 @@ def main():
         print(f"CPU threads: {torch.get_num_threads()}")
     print(f"Maximum epochs: {EPOCHS}")
     print(f"Physics points: {PHYSICS_POINTS}")
-    print(f"Network: 1 -> {NETWORK_WIDTH} x {NETWORK_DEPTH} -> 4")
+    print("Network: 1 -> 128 -> 128 -> 128 -> 128 -> 128 -> 128 -> 4 (Tanh)")
     print(f"Fused AdamW: {fused_optimizer}")
     print(f"torch.compile: {compiled}")
 
@@ -582,31 +618,35 @@ def main():
     start_time = time.perf_counter()
     stable_checks = 0
     last_r2_all = np.array([-np.inf, -np.inf])
-    last_r2_extra = np.array([-np.inf, -np.inf])
-    history = {"epoch": [], "total": [], "data": [], "physics": []}
+    history = {name: [] for name in ("epoch", "total", "data", "physics", "initial", "energy")}
+    r2_history = []
     snapshot_epochs = []
     snapshots = []
 
-    for epoch in range(EPOCHS + 1):
+    for epoch in range(1, EPOCHS + 1):
         optimizer.zero_grad(set_to_none=True)
 
         theta_at_data = model(time_data)[:, :2]
         data_loss = torch.mean((theta_at_data - theta_data) ** 2)
 
         physics_stop = current_physics_stop(
-            epoch,
+            epoch - 1,
             measured_stop,
             float(t_reference[-1]),
         )
-        physics_loss = physics_loss_on_grid(
-            model,
-            time_physics,
-            physics_stop,
-        )
-        physics_weight = current_physics_weight(epoch)
+        time_physics = torch.linspace(
+            float(t_reference[0]), physics_stop, PHYSICS_POINTS,
+            dtype=torch.float32, device=device,
+        )[:, None]
+        physics_loss = physics_loss_on_grid(model, time_physics, physics_stop)
+        initial_loss = initial_condition_loss(model, time_initial, state_initial)
+        energy_loss = energy_loss_on_grid(model, time_physics, energy_initial)
+        physics_weight = current_physics_weight(epoch - 1)
         total_loss = (
             LAMBDA_DATA * data_loss
             + physics_weight * physics_loss
+            + LAMBDA_INITIAL * initial_loss
+            + LAMBDA_ENERGY * energy_loss
         )
 
         total_loss.backward()
@@ -619,21 +659,24 @@ def main():
             history["total"].append(total_loss.item())
             history["data"].append(data_loss.item())
             history["physics"].append(physics_loss.item())
+            history["initial"].append(initial_loss.item())
+            history["energy"].append(energy_loss.item())
 
         should_evaluate = (
             epoch % EVALUATE_EVERY == 0
             or epoch % SNAPSHOT_EVERY == 0
+            or epoch == EPOCHS
         )
         if should_evaluate:
-            last_r2_all, last_r2_extra, prediction_now = evaluate(
+            last_r2_all, prediction_now = evaluate(
                 model,
                 time_evaluation,
                 theta_reference,
-                data_stop,
             )
             if epoch % SNAPSHOT_EVERY == 0:
                 snapshot_epochs.append(epoch)
                 snapshots.append(prediction_now.copy())
+            r2_history.append((epoch, *last_r2_all))
             physics_value = physics_loss.item()
             r2_mean = float(np.mean(last_r2_all))
 
@@ -666,12 +709,17 @@ def main():
     runtime_seconds = time.perf_counter() - start_time
     runtime = format_time(runtime_seconds)
 
-    last_r2_all, last_r2_extra, prediction_final = evaluate(
+    last_r2_all, prediction_final = evaluate(
         model,
         time_evaluation,
         theta_reference,
-        data_stop,
     )
+    if not r2_history or r2_history[-1][0] != epoch:
+        r2_history.append((epoch, *last_r2_all))
+    with (OUTPUT_DIR / "tpinn2_r2_history.csv").open("w", newline="") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(("optimizer_updates", "r2_theta1", "r2_theta2"))
+        writer.writerows(r2_history)
     if not snapshot_epochs or snapshot_epochs[-1] != epoch:
         snapshot_epochs.append(epoch)
         snapshots.append(prediction_final.copy())
@@ -680,8 +728,9 @@ def main():
         history["total"].append(total_loss.item())
         history["data"].append(data_loss.item())
         history["physics"].append(physics_loss.item())
+        history["initial"].append(initial_loss.item())
+        history["energy"].append(energy_loss.item())
     r2_mean = float(np.mean(last_r2_all))
-    r2_extra_mean = float(np.mean(last_r2_extra))
 
     print("\nTPINN result")
     print(f"Epoch: {epoch}")
@@ -690,7 +739,6 @@ def main():
     print(f"R2 theta1: {last_r2_all[0]:.6f}")
     print(f"R2 theta2: {last_r2_all[1]:.6f}")
     print(f"R2 mean: {r2_mean:.6f}")
-    print(f"R2 extrapolation mean: {r2_extra_mean:.6f}")
 
     save_log(
         device,
@@ -700,15 +748,22 @@ def main():
         data_loss.item(),
         physics_loss.item(),
         last_r2_all,
-        last_r2_extra,
+        initial_loss.item(),
+        energy_loss.item(),
     )
     save_results(
         t_reference,
         theta_reference,
         data_indices,
         prediction_final,
+        epoch,
     )
+    with (OUTPUT_DIR / f"{OUTPUT_PREFIX}_loss_history.csv").open("w", newline="") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(history)
+        writer.writerows(zip(*history.values()))
     save_loss(history)
+    save_r2_error(r2_history)
     save_training_animation(
         t_reference,
         theta_reference,

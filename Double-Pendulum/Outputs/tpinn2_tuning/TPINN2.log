@@ -11,16 +11,15 @@ Hidden layers: 6
 Learning rate: 0.0003
 Lambda data: 1000.0
 Lambda physics: 1000.0
-Lambda initial: 500.0
-Lambda energy: 1.0
 Maximum epochs: 30000
 Epoch: 30000
-Runtime: 00:03:06
-Loss: 3.379607e+00
-Data loss: 3.657939e-07
-Physics loss: 1.024566e-04
-Initial loss: 0.000000e+00
-Energy loss: 3.276784e+00
-R2 theta1: 0.168376
-R2 theta2: 0.171125
-R2 mean: 0.169750
+Runtime: 00:01:51
+Loss: 6.076927e-02
+Data loss: 4.251650e-07
+Physics loss: 6.034410e-05
+R2 theta1: 0.104835
+R2 theta2: 0.104898
+R2 mean: 0.104867
+R2 theta1 extrapolation: 0.047085
+R2 theta2 extrapolation: 0.040990
+R2 extrapolation mean: 0.044037
