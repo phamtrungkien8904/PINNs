@@ -84,7 +84,7 @@ plt.rcParams.update(
 # -----------------------------------------------------------------------------
 SCRIPT_DIR = Path(__file__).resolve().parent
 DATA_FILE = SCRIPT_DIR / "double_pendulum_data.dat"
-OUTPUT_DIR = SCRIPT_DIR / "Outputs/tpinn2_003"
+OUTPUT_DIR = SCRIPT_DIR / "Paper-Images/tpinn2_001"
 OUTPUT_PREFIX = "tpinn2"
 LOG_FILE = OUTPUT_DIR / "TPINN2.log"
 
@@ -215,17 +215,22 @@ class DoublePendulumStatePINN(nn.Module):
             torch.tensor(STATE_SCALE, dtype=torch.float32)[None, :],
         )
 
-        # Four 128-node sine layers from the archived tpinn2_001 configuration.
-        first = SineLayer(1, 128, omega0=FIRST_LAYER_OMEGA, first=True)
-        hidden2 = SineLayer(128, 128)
-        hidden3 = SineLayer(128, 128)
-        hidden4 = SineLayer(128, 128)
-        final_layer = nn.Linear(128, 4)
-        with torch.no_grad():
-            bound = np.sqrt(6.0 / 128)
-            final_layer.weight.uniform_(-bound, bound)
-            final_layer.bias.zero_()
-        self.network = nn.Sequential(first, hidden2, hidden3, hidden4, final_layer)
+        # Linear-Tanh network with six 128-node hidden layers.
+        self.network = nn.Sequential(
+            nn.Linear(1, 128),
+            nn.Tanh(),
+            nn.Linear(128, 128),
+            nn.Tanh(),
+            nn.Linear(128, 128),
+            nn.Tanh(),
+            nn.Linear(128, 128),
+            nn.Tanh(),
+            nn.Linear(128, 128),
+            nn.Tanh(),
+            nn.Linear(128, 128),
+            nn.Tanh(),
+            nn.Linear(128, 4),
+        )
 
     def forward(self, t):
         normalized_time = 2.0 * (t - self.time_min) / self.time_span - 1.0
