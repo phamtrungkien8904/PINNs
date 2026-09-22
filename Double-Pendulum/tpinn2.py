@@ -215,20 +215,14 @@ class DoublePendulumStatePINN(nn.Module):
             torch.tensor(STATE_SCALE, dtype=torch.float32)[None, :],
         )
 
-        # Linear-Tanh network with six 128-node hidden layers.
+        # SIREN network with six 128-node hidden layers.
         self.network = nn.Sequential(
-            nn.Linear(1, 128),
-            nn.Tanh(),
-            nn.Linear(128, 128),
-            nn.Tanh(),
-            nn.Linear(128, 128),
-            nn.Tanh(),
-            nn.Linear(128, 128),
-            nn.Tanh(),
-            nn.Linear(128, 128),
-            nn.Tanh(),
-            nn.Linear(128, 128),
-            nn.Tanh(),
+            SineLayer(1, 128, omega0=30.0, first=True),
+            SineLayer(128, 128),
+            SineLayer(128, 128),
+            SineLayer(128, 128),
+            SineLayer(128, 128),
+            SineLayer(128, 128),
             nn.Linear(128, 4),
         )
 
