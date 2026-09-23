@@ -93,7 +93,7 @@ SEED = 0
 EPOCHS = 50_000
 PRINT_EVERY = 1_000
 EVALUATE_EVERY = 1_000
-SNAPSHOT_EVERY = 500
+SNAPSHOT_EVERY = 100
 HISTORY_EVERY = 100
 GIF_FPS = 30
 
@@ -427,8 +427,8 @@ def save_results(time_reference, theta_reference, data_indices, prediction, epoc
                   label=f"TPINN {label}")
     axis.set(xlabel="Time (s)", ylabel="Angle (rad)",
              title=f"Double Pendulum - Time Domain (Epoch {epoch})",
-             xlim=(0, 20), ylim=(-1, 1))
-    axis.legend(ncol=2)
+             xlim=(0, 30), ylim=(-1, 1))
+    axis.legend(ncol=2, loc="upper right")
     fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_results.pdf", format="pdf")
     fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_results.png", dpi=600)
     plt.close(fig)

@@ -80,7 +80,7 @@ LOG_FILE = OUTPUT_DIR / f"FPINN2.log"
 
 SEED = 0
 EPOCHS = 50000
-SNAPSHOT_EVERY = 1000
+SNAPSHOT_EVERY = 100
 PRINT_EVERY = 1000
 
 # The physical record occupies the first half of the Fourier period.
@@ -507,9 +507,9 @@ def save_figures(
     ax.plot(t[data_indices], theta2_reference[data_indices], "o", color="red", label=r"Training Data $\theta_2$")
     ax.plot(t, theta_prediction[:, 1], "-", color="red", label=r"FPINN $\theta_2$")
     ax.set(xlabel="Time (s)", ylabel="Angle (rad)", title=f"Double Pendulum - Time Domain (Epoch {EPOCHS})")
-    ax.set_xlim(0, 20)
+    ax.set_xlim(0, 30)
     ax.set_ylim(-1, 1)
-    ax.legend(ncol=2)
+    ax.legend(ncol=2, loc="upper right")
     fig.savefig(OUTPUT_DIR / f"{OUTPUT_PREFIX}_results.pdf", format="pdf")
     plt.close(fig)
 
