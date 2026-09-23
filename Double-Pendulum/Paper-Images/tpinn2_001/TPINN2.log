@@ -14,15 +14,15 @@ First layer omega: 60.0
 Lambda data: 1000.0
 Lambda physics: 1000.0
 Lambda initial: 500.0
-Lambda energy: 0.0
+Lambda energy: 1.0
 Maximum epochs: 50000
 Epoch: 50000
-Runtime: 00:03:07
-Loss: 3.901947e-03
-Data loss: 1.844659e-07
-Physics loss: 3.717481e-06
+Runtime: 00:03:09
+Loss: 4.273701e-02
+Data loss: 4.598873e-06
+Physics loss: 3.779521e-05
 Initial loss: 0.000000e+00
-Energy loss: 7.051872e-03
-R2 theta1: 0.996077
-R2 theta2: 0.996131
-R2 mean: 0.996104
+Energy loss: 3.429283e-04
+R2 theta1: 0.981295
+R2 theta2: 0.981720
+R2 mean: 0.981508
