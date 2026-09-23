@@ -173,11 +173,11 @@ ax.set_title("Double Pendulum (Time domain)")
 ax.set_xlim(0, tmax)
 ax.set_xlabel("Time (s)")
 ax.set_ylabel("Angle (rad)")
-ax.set_ylim(-10, 10)
-ax.set_xlim(0, 20)
+ax.set_ylim(-1, 1)
+ax.set_xlim(0, 30)
 ax.legend()
 plt.savefig("double_pendulum_time.png", dpi=600)
-# plt.savefig("double_pendulum_time_2.pdf", format="pdf")
+plt.savefig("double_pendulum_time.pdf", format="pdf")
 plt.show()
 
 
@@ -193,17 +193,18 @@ freq = freq[mask]
 mag1 = 2.0 / bins * np.abs(signal_fft1[mask])
 mag2 = 2.0 / bins * np.abs(signal_fft2[mask])
 
+freq = freq*2*np.pi  # Convert to angular frequency (rad/s)
 fig, ax = plt.subplots(figsize=(8/2.54, 6/2.54))
 ax.plot(freq, mag1, label="Bob 1", color="blue")
 ax.plot(freq, mag2, label="Bob 2", color="red")
 ax.set_title("Double Pendulum (Frequency domain)")
-ax.set_xlabel("Frequency (Hz)")
+ax.set_xlabel("Angular frequency (rad/s)")
 ax.set_ylabel("Magnitude")
-ax.set_xlim(0, 2)  # Limit x-axis to focus on low frequencies
+ax.set_xlim(0, 20)  # Limit x-axis to focus on low frequencies
 ax.set_ylim(0, 0.5)  # Limit y-axis to focus on relevant magnitudes
 ax.legend()
 plt.savefig("double_pendulum_fft.png", dpi=600)
-# plt.savefig("double_pendulum_fft_1.pdf", format="pdf")
+plt.savefig("double_pendulum_fft.pdf", format="pdf")
 plt.show()
 
 
